@@ -9,7 +9,7 @@
 #include "hwinit/i2c.h"
 #include "key_derivation.h"
 #include "exocfg.h"
-#define XVERSION 1
+#define XVERSION 2
 
 static void shutdown_using_pmic()
 {
@@ -42,6 +42,16 @@ void load_sbk(const u8* sbkSrc)
     }
 }
 
+static __attribute__ ((noinline)) void print_aes_key(const u8* keyData, size_t keySize)
+{
+    for (size_t i=0; i<keySize; i+=8)
+    {
+        printk("%02X%02X%02X%02X%02X%02X%02X%02X",
+            (u32)keyData[i+0], (u32)keyData[i+1], (u32)keyData[i+2], (u32)keyData[i+3],
+            (u32)keyData[i+4], (u32)keyData[i+5], (u32)keyData[i+6], (u32)keyData[i+7]);
+    }
+}
+
 static __attribute__ ((noinline)) int tsec_key_readout(u8* outBuf)  //noinline so we get the stack space back
 {
     u8 carveoutData[0x1000];
@@ -53,10 +63,9 @@ static __attribute__ ((noinline)) int tsec_key_readout(u8* outBuf)  //noinline s
         printk("trying carveout 0x%08x rev %u\n", carveoutPtr, rev);
         memset(outBuf,0,0x10);
         retVal = tsec_query(carveoutPtr, outBuf, rev);
-        printk("TSEC KEY: %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X retVal: %d\n",
-            (u32)outBuf[0], (u32)outBuf[1], (u32)outBuf[2], (u32)outBuf[3], (u32)outBuf[4], (u32)outBuf[5], (u32)outBuf[6], (u32)outBuf[7], 
-            (u32)outBuf[8], (u32)outBuf[9], (u32)outBuf[10], (u32)outBuf[11], (u32)outBuf[12], (u32)outBuf[13], (u32)outBuf[14], (u32)outBuf[15],
-            retVal);
+        printk("TSEC KEY: ");
+        print_aes_key(outBuf, 0x10);
+        printk(" retVal: %d\n", retVal);
     }
     mc_disable_ahb_redirect();
 
@@ -84,24 +93,17 @@ int main(void) {
     u8 sbkBuf[0x10];
     memset(sbkBuf, 0, sizeof(sbkBuf));
     fuse_get_hardware_info(sbkBuf);
-    printk("HWI: %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n",
-        (u32)sbkBuf[0], (u32)sbkBuf[1], (u32)sbkBuf[2], (u32)sbkBuf[3], (u32)sbkBuf[4], (u32)sbkBuf[5], (u32)sbkBuf[6], (u32)sbkBuf[7],
-        (u32)sbkBuf[8], (u32)sbkBuf[9], (u32)sbkBuf[10], (u32)sbkBuf[11], (u32)sbkBuf[12], (u32)sbkBuf[13], (u32)sbkBuf[14], (u32)sbkBuf[15]);
+    printk("HWI: "); print_aes_key(sbkBuf, 0x10); printk("\n");
 
     memcpy(sbkBuf, (void *)get_fuse_chip_regs()->FUSE_PRIVATE_KEY, sizeof(sbkBuf));
-	printk("SBK: %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n",
-        (u32)sbkBuf[0], (u32)sbkBuf[1], (u32)sbkBuf[2], (u32)sbkBuf[3], (u32)sbkBuf[4], (u32)sbkBuf[5], (u32)sbkBuf[6], (u32)sbkBuf[7],
-        (u32)sbkBuf[8], (u32)sbkBuf[9], (u32)sbkBuf[10], (u32)sbkBuf[11], (u32)sbkBuf[12], (u32)sbkBuf[13], (u32)sbkBuf[14], (u32)sbkBuf[15]);
+	printk("SBK: "); print_aes_key(sbkBuf, 0x10); printk("\n");
 
     load_sbk(sbkBuf);
 
     u8 tempBuf[32];
     memset(tempBuf, 0, sizeof(tempBuf));
-    se_aes_128_ecb_encrypt_block(0xE, tempBuf, 0x10, tempBuf, 0x10);
-    printk("SBK AESE 0 %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n",
-        (u32)tempBuf[0], (u32)tempBuf[1], (u32)tempBuf[2], (u32)tempBuf[3], (u32)tempBuf[4], (u32)tempBuf[5], (u32)tempBuf[6], (u32)tempBuf[7], 
-        (u32)tempBuf[8], (u32)tempBuf[9], (u32)tempBuf[10], (u32)tempBuf[11], (u32)tempBuf[12], (u32)tempBuf[13], (u32)tempBuf[14], (u32)tempBuf[15]);
-        
+    se_aes_128_ecb_encrypt_block(KEYSLOT_SWITCH_SBK, tempBuf, 0x10, tempBuf, 0x10);
+    printk("SBK AESE 0 "); print_aes_key(tempBuf, 0x10); printk("\n");
 
     int retVal = tsec_key_readout(tempBuf);
     if (retVal == 0)
@@ -111,17 +113,18 @@ int main(void) {
         memcpy(g_tsec_key, tempBuf, 0x10);
         derive_nx_keydata(target_firmware);
 
+        const unsigned int device_keyslot = (target_firmware >= EXOSPHERE_TARGET_FIRMWARE_400) ? (KEYSLOT_SWITCH_4XOLDDEVICEKEY) : (KEYSLOT_SWITCH_DEVICEKEY);
+        memset(tempBuf, 0, sizeof(tempBuf));
+        read_aes_keyslot(device_keyslot, tempBuf, 0x10);
+        printk("DEVICE KEY: "); print_aes_key(tempBuf, 0x10); printk("\n");
+
         for (int i=0; i<4; i++)
         {
             const int partition_id = (i > 2) ? 2 : i;
             derive_bis_key(tempBuf, (BisPartition_t)partition_id, target_firmware);
 
-            printk("BIS KEY %d (crypt): %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n", i,
-                (u32)tempBuf[0], (u32)tempBuf[1], (u32)tempBuf[2], (u32)tempBuf[3], (u32)tempBuf[4], (u32)tempBuf[5], (u32)tempBuf[6], (u32)tempBuf[7], 
-                (u32)tempBuf[8], (u32)tempBuf[9], (u32)tempBuf[10], (u32)tempBuf[11], (u32)tempBuf[12], (u32)tempBuf[13], (u32)tempBuf[14], (u32)tempBuf[15]);
-            printk("BIS KEY %d (tweak): %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n", i,
-                (u32)tempBuf[16], (u32)tempBuf[17], (u32)tempBuf[18], (u32)tempBuf[19], (u32)tempBuf[20], (u32)tempBuf[21], (u32)tempBuf[22], (u32)tempBuf[23], 
-                (u32)tempBuf[24], (u32)tempBuf[25], (u32)tempBuf[26], (u32)tempBuf[27], (u32)tempBuf[28], (u32)tempBuf[29], (u32)tempBuf[30], (u32)tempBuf[31]);
+            printk("BIS KEY %d (crypt): ", i); print_aes_key(&tempBuf[0], sizeof(tempBuf)/2); printk("\n");
+            printk("BIS KEY %d (tweak): ", i); print_aes_key(&tempBuf[sizeof(tempBuf)/2], sizeof(tempBuf)/2); printk("\n");
         }
     }
     else

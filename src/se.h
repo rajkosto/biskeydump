@@ -174,6 +174,7 @@ void se_verify_flags_cleared(void);
 
 void set_aes_keyslot_flags(unsigned int keyslot, unsigned int flags);
 void set_rsa_keyslot_flags(unsigned int keyslot, unsigned int flags);
+void read_aes_keyslot(unsigned int keyslot, void* outBuf, size_t key_size);
 void clear_aes_keyslot(unsigned int keyslot);
 void clear_rsa_keyslot(unsigned int keyslot);
 

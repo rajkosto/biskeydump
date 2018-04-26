@@ -76,6 +76,18 @@ void set_rsa_keyslot_flags(unsigned int keyslot, unsigned int flags) {
     }
 }
 
+void read_aes_keyslot(unsigned int keyslot, void* outBuf, size_t key_size) {
+    if (keyslot >= KEYSLOT_AES_MAX) {
+        generic_panic();
+    }
+
+    unsigned int* outBufInts = (unsigned int*)outBuf;
+    for (unsigned int i = 0; i < (key_size >> 2); i++) {
+        SECURITY_ENGINE->AES_KEYTABLE_ADDR = (keyslot << 4) | i;
+        outBufInts[i] = SECURITY_ENGINE->AES_KEYTABLE_DATA;
+    }
+}
+
 void clear_aes_keyslot(unsigned int keyslot) {
     if (keyslot >= KEYSLOT_AES_MAX) {
         generic_panic();

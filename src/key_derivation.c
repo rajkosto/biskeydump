@@ -69,8 +69,10 @@ void derive_nx_keydata(u32 target_firmware) {
     nx_keyblob_t keyblob;
     
     /* TODO: Set keyslot flags properly in preparation of derivation. */
+    #if 0 //this prevents device key readout
     set_aes_keyslot_flags(0xE, 0x15);
     set_aes_keyslot_flags(0xD, 0x15);
+    #endif
     
     /* Set TSEC key. */
     get_tsec_key(work_buffer);
