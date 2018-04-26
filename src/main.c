@@ -6,16 +6,25 @@
 #include "fuse.h"
 #include "se.h"
 #include "hwinit/btn.h"
+#include "hwinit/i2c.h"
 #include "key_derivation.h"
 #include "exocfg.h"
 #define XVERSION 1
 
-static void reset_using_pmc()
+static void shutdown_using_pmic()
 {
-    volatile uint32_t *reset;
+    const u8 MAX77620_I2C_PERIPH = I2C_5;
+    const u8 MAX77620_I2C_ADDR = 0x3C;
 
-    reset = (uint32_t *)0x7000e400;
-    *reset |= (1 << 4);
+    const u8 MAX77620_REG_ONOFFCNFG1 = 0x41;
+    //const u8 MAX77620_REG_ONOFFCNFG2 = 0x42;
+
+    //const u8 MAX77620_ONOFFCNFG1_SFT_RST = 1u << 7;
+    const u8 MAX77620_ONOFFCNFG1_PWR_OFF = 1u << 1;
+
+    u8 regVal = i2c_recv_byte(MAX77620_I2C_PERIPH, MAX77620_I2C_ADDR, MAX77620_REG_ONOFFCNFG1);
+    regVal |= MAX77620_ONOFFCNFG1_PWR_OFF;
+    i2c_send_byte(MAX77620_I2C_PERIPH, MAX77620_I2C_ADDR, MAX77620_REG_ONOFFCNFG1, regVal);
 }
 
 void load_sbk(const u8* sbkSrc) 
@@ -121,11 +130,11 @@ int main(void) {
     // credits
     printk("\n                       fusee gelee by ktemkin, biskeydump by rajkosto\n");
 
-    // Wait for the power button, and then reset.
+    // Wait for the power button
     while (btn_read() != BTN_POWER);
 
-    // Reset.
-    reset_using_pmc();
+    // Tell the PMIC to turn everything off
+    shutdown_using_pmic();
 
     /* Do nothing for now */
     return 0;
