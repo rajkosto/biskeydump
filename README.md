@@ -3,9 +3,9 @@ Dumps all your Switch BIS keys for eMMC contents decryption, to be used with fus
 
 ## Usage
 
- 1. Insert your own tsec fw into hwinit/tsec.c topmost array instead of /* ... */
- 2. Build `biskeydump.bin`.
- 3. Run fusée gelée with `biskeydump.bin` instead of `fusee.bin` (sudo ./fusee-launcher.py biskeydump.bin).
+ 1. Place your own tsec fw as a C hex array or escaped string into the file src/hwinit/tsecfw.inl
+ 2. Build `biskeydump.bin` using make in repository root directory
+ 3. Run fusée gelée with `biskeydump.bin` instead of `fusee.bin` (sudo ./fusee-launcher.py biskeydump.bin)
 
 ## Changes
 

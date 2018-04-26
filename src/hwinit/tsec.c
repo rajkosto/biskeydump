@@ -2,10 +2,9 @@
 #include "tsec.h"
 #include "clock.h"
 #include "t210.h"
-
 static const u8 _tsec_fw[0xF00] __attribute__((aligned(0x100))) = 
 {
-	/* ... */
+	#include "tsecfw.inl"
 };
 
 static int _tsec_dma_wait_idle()
