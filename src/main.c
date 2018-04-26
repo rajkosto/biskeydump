@@ -115,6 +115,8 @@ int main(void) {
                 (u32)tempBuf[24], (u32)tempBuf[25], (u32)tempBuf[26], (u32)tempBuf[27], (u32)tempBuf[28], (u32)tempBuf[29], (u32)tempBuf[30], (u32)tempBuf[31]);
         }
     }
+    else
+        printk("ERROR getting TSEC key, cannot continue (is the TSEC firmware correct?)\n");
 
     // credits
     printk("\n                       fusee gelee by ktemkin, biskeydump by rajkosto\n");

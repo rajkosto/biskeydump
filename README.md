@@ -6,7 +6,7 @@ With all your BIS keys and your RawNand.bin (or the physical eMMC attached via m
 ## Usage
 
  1. Place your own tsec fw as a C hex array or escaped string into the file src/hwinit/tsecfw.inl
- 2. Build `biskeydump.bin` using make in repository root directory
+ 2. Build `biskeydump.bin` using make (make clean && make) from the repository root directory
  3. Run fusée gelée with `biskeydump.bin` instead of `fusee.bin` (sudo ./fusee-launcher.py biskeydump.bin)
 
 ## Changes
