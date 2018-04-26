@@ -9,6 +9,7 @@
 #include "hwinit/i2c.h"
 #include "key_derivation.h"
 #include "exocfg.h"
+#include "smiley.h"
 #define XVERSION 2
 
 static void shutdown_using_pmic()
@@ -73,6 +74,7 @@ static __attribute__ ((noinline)) int tsec_key_readout(u8* outBuf)  //noinline s
 }
 u8 g_tsec_key[16]; //to be used in other TUs
 
+float g_iTime;
 int main(void) {
     u32 *lfb_base;
 
@@ -133,9 +135,34 @@ int main(void) {
     // credits
     printk("\n                       fusee gelee by ktemkin, biskeydump by rajkosto\n");
 
-    // Wait for the power button
-    while (btn_read() != BTN_POWER);
+    const int smileySize = 128;
+    const int smileyVertStart = 128*3;
+    const int smileyHorizStart = (720/2)-(smileySize/2);
+    const float incPixel = 1.0f/smileySize;
+    for (unsigned int time=0; time>=0; time++)
+    {
+        g_iTime = time*0.5f;
+        int rowIdx = smileyVertStart*768;
+        vec2 uv = {0.0f, 0.5f};
+        for (int y=0; y<smileySize; y++)
+        {
+            uv.x = -0.5f;
+            for (int x=0; x<128; x++)
+            {
+                vec4 currPixel = mainImage(uv);
+                lfb_base[rowIdx+smileyHorizStart+x] = floats_to_pixel(currPixel.x, currPixel.y, currPixel.z);
+                uv.x += incPixel;
+            }
+            rowIdx += 768;
+            uv.y -= incPixel;
 
+            // Check for power button press
+            if (btn_read() == BTN_POWER)
+                goto progend;
+        }
+    }    
+
+progend:
     // Tell the PMIC to turn everything off
     shutdown_using_pmic();
 

@@ -24,6 +24,7 @@ CFLAGS = \
 	-fomit-frame-pointer \
 	-ffunction-sections \
 	-fdata-sections \
+	-fno-strict-aliasing \
 	-std=gnu11 \
 	-Wall \
 	-DMINIZ_NO_ARCHIVE_WRITING_APIS \
