@@ -25,13 +25,16 @@ CFLAGS = \
 	-ffunction-sections \
 	-fdata-sections \
 	-fno-strict-aliasing \
+	-ffast-math \
 	-std=gnu11 \
 	-Wall \
 	-DMINIZ_NO_ARCHIVE_WRITING_APIS \
 	-DMINIZ_NO_ZLIB_APIS \
 	-DMINIZ_NO_ARCHIVE_APIS \
 	-DMINIZ_NO_TIME \
-	-DMINIZ_NO_STDIO 
+	-DMINIZ_NO_STDIO \
+	-DFIXMATH_NO_OVERFLOW \
+	-DFIXMATH_NO_ROUNDING
 
 LDFLAGS = -specs=linker.specs -g $(ARCH)
 
