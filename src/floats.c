@@ -33,11 +33,11 @@ float normalizeAngle(float angle)
 float sinf(float x)
 {
     //always wrap input angle to -PI..PI
-    /*while (x < -3.14159265f)
-        x += 6.28318531f;
+    /*while (x < -MY_PI)
+        x += MY_2PI;
     
-    while (x >  3.14159265f)
-        x -= 6.28318531f;*/
+    while (x > MY_PI)
+        x -= MY_2PI;*/
 
     x = normalizeAngle(x);
 
@@ -52,11 +52,11 @@ float cosf(float x)
 {
     //compute cosine: sin(x + PI/2) = cos(x)
     x += 1.57079632f;
-    /*while (x < -3.14159265f)
-        x += 6.28318531f;
+    /*while (x < -MY_PI)
+        x += MY_2PI;
     
-    while (x >  3.14159265f)
-        x -= 6.28318531f;*/
+    while (x > MY_PI)
+        x -= MY_2PI;*/
 
     x = normalizeAngle(x);
 
