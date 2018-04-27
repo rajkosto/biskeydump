@@ -138,7 +138,7 @@ int main(void) {
     const int smileySize = 128;
     const int smileyVertStart = 128*3;
     const int smileyHorizStart = (720/2)-(smileySize/2);
-    const float incPixel = 1.0f/smileySize;
+    const fix16_t incPixel = fix16_from_float(1.0f/smileySize);
     const float timerToSeconds = 1.0f/1000000;
     u32 lastTmr = TMR(0x10);
     float lastTime = 0.0f;
@@ -148,33 +148,34 @@ int main(void) {
         u32 passedTime = currTmr - lastTmr;
         lastTmr = currTmr;
         float fTime = lastTime + (passedTime*timerToSeconds);
-
-        float sinOfTime = sinf(fTime*0.5f);
-        float smile = sinOfTime*0.5f+0.5f; //animate smile with time
+        
+        fix16_t eyeTime = fix16_from_float(fTime*3.0f);
+        fix16_t sinOfTime = fix16_sin(fix16_from_float(fTime*0.5f));
+        fix16_t smile = fix16_from_float(fix16_to_float(sinOfTime)*0.5f+0.5f); //animate smile with time
         vec2 eyesVect; // make it that the eyes look around as time passes
         {
-            vec2 eyeRot = {sinOfTime, cosf(fTime*0.38f)};        
-            eyesVect = vec2_mul_one(eyeRot,0.4f);
+            vec2 eyeRot = {sinOfTime, fix16_cos(fix16_from_float(fTime*0.38f))};        
+            eyesVect = vec2_mul_one(eyeRot,F16(0.4));
         }
         
         #if 0
-        if(vec2_lengthsq(eyesVect) > 0.5f) 
-            eyesVect = (vec2){0.0f,0.0f};	// fix bug with sudden eye move
+        if(vec2_lengthsq(eyesVect) > F16(0.5)) 
+            eyesVect = (vec2){F16(0.0),F16(0.0)};	// fix bug with sudden eye move
         #endif
 
         int rowIdx = smileyVertStart*768;
-        vec2 uv = {0.0f, 0.5f};
+        vec2 uv = {F16(0.0), F16(0.5)};
         for (int y=0; y<smileySize; y++)
         {
-            uv.x = -0.5f;
+            uv.x = F16(-0.5);
             for (int x=0; x<128; x++)
             {
-                vec4 currPixel = mainImage(uv, eyesVect, smile, fTime*3.0f);
-                lfb_base[rowIdx+smileyHorizStart+x] = floats_to_pixel(currPixel.x, currPixel.y, currPixel.z);
-                uv.x += incPixel;
+                vec4 currPixel = mainImage(uv, eyesVect, smile, eyeTime);
+                lfb_base[rowIdx+smileyHorizStart+x] = fixeds_to_pixel(currPixel.x, currPixel.y, currPixel.z);
+                uv.x = fix16_add(uv.x,incPixel);
             }
             rowIdx += 768;
-            uv.y -= incPixel;
+            uv.y = fix16_sub(uv.y,incPixel);
 
             // Check for power button press
             if (btn_read() == BTN_POWER)
