@@ -179,7 +179,7 @@ int main(void) {
             for (int x=0; x<qrCodeOrigSize; x++)
             {
                 bool currBit = qrcodegen_getModule(qrDataBuf, x, y);
-                u32 pixelColor = currBit ? 0xFFFFFFFF : 0x00000000;
+                u32 pixelColor = currBit ? 0x00000000 : 0xFFFFFFFF;
                 for (u32 i=0; i<(qrCodeActualSize/qrCodeOrigSize); i++)
                     *lineDataPtr++ = pixelColor;
             }
