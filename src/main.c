@@ -29,53 +29,37 @@ static void shutdown_using_pmic()
     i2c_send_byte(MAX77620_I2C_PERIPH, MAX77620_I2C_ADDR, MAX77620_REG_ONOFFCNFG1, regVal);
 }
 
-void load_sbk(const u8* sbkSrc) 
+static __attribute__ ((noinline)) const char* hexify_crypto_key(const void* dataBuf, size_t keySize)
 {
-    uint32_t sbk[0x4];
-    /* Load the SBK into the security engine, if relevant. */
-    memcpy(sbk, sbkSrc, sizeof(sbk));
-    for (unsigned int i = 0; i < 4; i++) 
-    {
-        if (sbk[i] != 0xFFFFFFFF) 
-        {
-            set_aes_keyslot(KEYSLOT_SWITCH_SBK, sbk, 0x10);
-            break;
-        }
-    }
-}
-
-static __attribute__ ((noinline)) void print_aes_key(const u8* keyData, size_t keySize)
-{
+    static char tempBuf[72];
+    const u8* keyData = (const u8*)dataBuf;
+    int currOffs = 0;    
     for (size_t i=0; i<keySize; i+=8)
     {
-        printk("%02X%02X%02X%02X%02X%02X%02X%02X",
+        currOffs += snprintfk(&tempBuf[currOffs], sizeof(tempBuf)-currOffs, 
+            "%02X%02X%02X%02X%02X%02X%02X%02X",
             (u32)keyData[i+0], (u32)keyData[i+1], (u32)keyData[i+2], (u32)keyData[i+3],
             (u32)keyData[i+4], (u32)keyData[i+5], (u32)keyData[i+6], (u32)keyData[i+7]);
     }
+    return tempBuf;
 }
 
-static __attribute__ ((noinline)) int tsec_key_readout(u8* outBuf)  //noinline so we get the stack space back
+static __attribute__ ((noinline)) int tsec_key_readout(void* outBuf)  //noinline so we get the stack space back
 {
     u8 carveoutData[0x1000];
     u32 carveoutPtr = ((u32)carveoutData + 0xFF) & ~(0xFFu); //align to 0x100
     mc_enable_ahb_redirect(carveoutPtr, carveoutPtr+0xF00); //the values here dont matter ? it redirects a 1MiB block which covers all of IDATA it seems
     int retVal = 0;
-    for (u32 rev=1; rev<2; rev++)
-    {
-        printk("trying carveout 0x%08x rev %u\n", carveoutPtr, rev);
-        memset(outBuf,0,0x10);
-        retVal = tsec_query(carveoutPtr, outBuf, rev);
-        printk("TSEC KEY: ");
-        print_aes_key(outBuf, 0x10);
-        printk(" retVal: %d\n", retVal);
-    }
+    const u32 tsecRev = 1;
+    printk("TSEC using carveout 0x%08x rev %u\n", carveoutPtr, tsecRev);
+    memset(outBuf,0,0x10);
+    retVal = tsec_query(carveoutPtr, outBuf, tsecRev);
     mc_disable_ahb_redirect();
-
     return retVal;
 }
-u8 g_tsec_key[16]; //to be used in other TUs
 
 int main(void) {
+    u32 tempBuf[0x20/sizeof(u32)];
     u32 *lfb_base;
 
     nx_hwinit();
@@ -92,45 +76,49 @@ int main(void) {
     /* to avoid flickering. */
     display_enable_backlight(true);
 
-    u8 sbkBuf[0x10];
-    memset(sbkBuf, 0, sizeof(sbkBuf));
-    fuse_get_hardware_info(sbkBuf);
-    printk("HWI: "); print_aes_key(sbkBuf, 0x10); printk("\n");
-
-    memcpy(sbkBuf, (void *)get_fuse_chip_regs()->FUSE_PRIVATE_KEY, sizeof(sbkBuf));
-	printk("SBK: "); print_aes_key(sbkBuf, 0x10); printk("\n");
-
-    load_sbk(sbkBuf);
-
-    u8 tempBuf[32];
     memset(tempBuf, 0, sizeof(tempBuf));
-    se_aes_128_ecb_encrypt_block(KEYSLOT_SWITCH_SBK, tempBuf, 0x10, tempBuf, 0x10);
-    printk("SBK AESE 0 "); print_aes_key(tempBuf, 0x10); printk("\n");
+    fuse_get_hardware_info(tempBuf);
+    printk("HWI: %s\n", hexify_crypto_key(tempBuf, 0x10));
 
+    memset(tempBuf, 0, sizeof(tempBuf));
+    memcpy(tempBuf, (void*)get_fuse_chip_regs()->FUSE_PRIVATE_KEY, 0x10);
+	printk("SBK: %s\n", hexify_crypto_key(tempBuf, 0x10));
+
+    set_aes_keyslot(KEYSLOT_SWITCH_SBK, tempBuf, 0x10);
+    se_aes_128_ecb_encrypt_block(KEYSLOT_SWITCH_SBK, (u8*)(tempBuf)+0, sizeof(tempBuf)/2, (u8*)(tempBuf)+sizeof(tempBuf)/2, sizeof(tempBuf)/2);
+    printk("SBK AESE 0 (test): %s\n", hexify_crypto_key(tempBuf, 0x10));
+
+    memset(tempBuf, 0, sizeof(tempBuf));
     int retVal = tsec_key_readout(tempBuf);
     if (retVal == 0)
     {
-        const int target_firmware = EXOSPHERE_TARGET_FIRMWARE_100; //doesnt matter for BIS keys
+        printk("TSEC KEY: %s\n", hexify_crypto_key(tempBuf, 0x10));
 
-        memcpy(g_tsec_key, tempBuf, 0x10);
-        derive_nx_keydata(target_firmware);
+        const u32 target_tsec_keyslot = KEYSLOT_SWITCH_TEMPKEY;
+        set_aes_keyslot(target_tsec_keyslot, tempBuf, 0x10);
+        se_aes_128_ecb_encrypt_block(target_tsec_keyslot, (u8*)(tempBuf)+0, sizeof(tempBuf)/2, (u8*)(tempBuf)+sizeof(tempBuf)/2, sizeof(tempBuf)/2);
+        printk("TSEC AESE 0 (test): %s\n", hexify_crypto_key(tempBuf, 0x10));
 
-        const unsigned int device_keyslot = (target_firmware >= EXOSPHERE_TARGET_FIRMWARE_400) ? (KEYSLOT_SWITCH_4XOLDDEVICEKEY) : (KEYSLOT_SWITCH_DEVICEKEY);
+        const u32 target_firmware = EXOSPHERE_TARGET_FIRMWARE_100; //doesnt matter for BIS keys
+        derive_nx_keydata(target_tsec_keyslot, target_firmware);
+
+        const u32 device_keyslot = (target_firmware >= EXOSPHERE_TARGET_FIRMWARE_400) ? (KEYSLOT_SWITCH_4XOLDDEVICEKEY) : (KEYSLOT_SWITCH_DEVICEKEY);
         memset(tempBuf, 0, sizeof(tempBuf));
         read_aes_keyslot(device_keyslot, tempBuf, 0x10);
-        printk("DEVICE KEY: "); print_aes_key(tempBuf, 0x10); printk("\n");
+        printk("DEVICE KEY: %s\n", hexify_crypto_key(tempBuf, 0x10));
 
         for (int i=0; i<4; i++)
         {
+            memset(tempBuf, 0, sizeof(tempBuf));
             const int partition_id = (i > 2) ? 2 : i;
             derive_bis_key(tempBuf, (BisPartition_t)partition_id, target_firmware);
 
-            printk("BIS KEY %d (crypt): ", i); print_aes_key(&tempBuf[0], sizeof(tempBuf)/2); printk("\n");
-            printk("BIS KEY %d (tweak): ", i); print_aes_key(&tempBuf[sizeof(tempBuf)/2], sizeof(tempBuf)/2); printk("\n");
+            printk("BIS KEY %d (crypt): %s\n", i, hexify_crypto_key((u8*)(tempBuf)+0, sizeof(tempBuf)/2));
+            printk("BIS KEY %d (tweak): %s\n", i, hexify_crypto_key((u8*)(tempBuf)+sizeof(tempBuf)/2, sizeof(tempBuf)/2));
         }
     }
     else
-        printk("ERROR getting TSEC key, cannot continue (is the TSEC firmware correct?)\n");
+        printk("ERROR getting TSEC key (retVal %d), cannot continue (is the TSEC firmware correct?)\n", retVal);
 
     // credits
     printk("\n                       fusee gelee by ktemkin, biskeydump by rajkosto\n");

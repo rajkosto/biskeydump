@@ -42,9 +42,10 @@ static const uint8_t masterkey_4x_seed[0x10] =
 };
 #endif
 
-extern u8 g_tsec_key[16];
-void get_tsec_key(void *dst) {
-    memcpy(dst, g_tsec_key, sizeof(g_tsec_key));
+void get_tsec_key(u32 tsec_src_keyslot, void* dst) {
+    u32 keyBuf[0x10/sizeof(u32)];
+    read_aes_keyslot(tsec_src_keyslot, keyBuf, sizeof(keyBuf));
+    memcpy(dst, keyBuf, sizeof(keyBuf));
 }
 
 void get_keyblob(void *dst, u32 revision) {
@@ -64,7 +65,7 @@ bool safe_memcmp(u8 *a, u8 *b, u32 sz) {
 }
 
 /* Derive all Switch keys. */
-void derive_nx_keydata(u32 target_firmware) {
+void derive_nx_keydata(u32 tsec_keyslot_src, u32 target_firmware) {
     u8 work_buffer[0x10];
     nx_keyblob_t keyblob;
     
@@ -75,9 +76,8 @@ void derive_nx_keydata(u32 target_firmware) {
     #endif
     
     /* Set TSEC key. */
-    get_tsec_key(work_buffer);
-    set_aes_keyslot(0xD, work_buffer, 0x10); //0xD now has TSEC key
-    
+    get_tsec_key(tsec_keyslot_src,work_buffer);
+    set_aes_keyslot(0xD, work_buffer, 0x10); //0xD now has TSEC key    
     
     /* Get keyblob, always try to set up the highest possible master key. */
     /* TODO: Should we iterate, trying lower keys on failure? */

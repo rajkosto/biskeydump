@@ -22,3 +22,13 @@ void printk(char *fmt, ...)
 	video_puts(buf);
 	va_end(list);
 }
+
+int snprintfk(char *buf, unsigned int bufSize, const char* fmt, ...)
+{
+	va_list list;
+	va_start(list, fmt);
+	int outVal = vsnprintf(buf, bufSize, fmt, list);
+	va_end(list);
+
+	return outVal;
+}

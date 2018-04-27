@@ -101,7 +101,6 @@ inline vec4 vec4_mix(vec4 x, vec4 y, float a)
     return vec4_add(vec4_mul_one(x,negA),vec4_mul_one(y,a));
 }
 
-extern float g_iTime;
 inline u32 floats_to_pixel(float fR, float fG, float fB)
 {
     int iR, iG, iB;
