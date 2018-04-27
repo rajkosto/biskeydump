@@ -7,6 +7,7 @@
 #include "se.h"
 #include "hwinit/btn.h"
 #include "hwinit/i2c.h"
+#include "hwinit/t210.h"
 #include "key_derivation.h"
 #include "exocfg.h"
 #include "smiley.h"
@@ -74,7 +75,6 @@ static __attribute__ ((noinline)) int tsec_key_readout(u8* outBuf)  //noinline s
 }
 u8 g_tsec_key[16]; //to be used in other TUs
 
-float g_iTime;
 int main(void) {
     u32 *lfb_base;
 
@@ -139,9 +139,29 @@ int main(void) {
     const int smileyVertStart = 128*3;
     const int smileyHorizStart = (720/2)-(smileySize/2);
     const float incPixel = 1.0f/smileySize;
-    for (unsigned int time=0; time>=0; time++)
+    const float timerToSeconds = 1.0f/1000000;
+    u32 lastTmr = TMR(0x10);
+    float lastTime = 0.0f;
+    for (;;)
     {
-        g_iTime = time*0.5f;
+        u32 currTmr = TMR(0x10);
+        u32 passedTime = currTmr - lastTmr;
+        lastTmr = currTmr;
+        float fTime = lastTime + (passedTime*timerToSeconds);
+
+        float sinOfTime = sinf(fTime*0.5f);
+        float smile = sinOfTime*0.5f+0.5f; //animate smile with time
+        vec2 eyesVect; // make it that the eyes look around as time passes
+        {
+            vec2 eyeRot = {sinOfTime, cosf(fTime*0.38f)};        
+            eyesVect = vec2_mul_one(eyeRot,0.4f);
+        }
+        
+        #if 0
+        if(vec2_lengthsq(eyesVect) > 0.5f) 
+            eyesVect = (vec2){0.0f,0.0f};	// fix bug with sudden eye move
+        #endif
+
         int rowIdx = smileyVertStart*768;
         vec2 uv = {0.0f, 0.5f};
         for (int y=0; y<smileySize; y++)
@@ -149,7 +169,7 @@ int main(void) {
             uv.x = -0.5f;
             for (int x=0; x<128; x++)
             {
-                vec4 currPixel = mainImage(uv);
+                vec4 currPixel = mainImage(uv, eyesVect, smile, fTime*3.0f);
                 lfb_base[rowIdx+smileyHorizStart+x] = floats_to_pixel(currPixel.x, currPixel.y, currPixel.z);
                 uv.x += incPixel;
             }
@@ -160,6 +180,8 @@ int main(void) {
             if (btn_read() == BTN_POWER)
                 goto progend;
         }
+
+        lastTime = fTime;
     }    
 
 progend:

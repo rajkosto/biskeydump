@@ -23,7 +23,7 @@ inline vec2 within(vec2 uv, vec4 rect) {
 	return vec2_div(vec2_sub(uv,get_xy(rect)),vec2_sub(get_zw(rect),get_xy(rect)));
 }
 
-vec4 Brow(vec2 uv, float smile) {
+inline vec4 Brow(vec2 uv, float smile) {
     float offs = mix(0.2f, 0.0f, smile);
     uv.y += offs;
     
@@ -63,7 +63,7 @@ vec4 Brow(vec2 uv, float smile) {
     return col;
 }
 
-vec4 Eye(vec2 uv, float side, vec2 m, float smile) {
+inline vec4 Eye(vec2 uv, float side, vec2 m, float smile, float eyeTime) {
     uv = vec2_sub_one(uv,0.5f);
     uv.x *= side;
     
@@ -88,8 +88,7 @@ vec4 Eye(vec2 uv, float side, vec2 m, float smile) {
     pupilMask *= irisMask;
     apply_xyz(&col,vec3_mix(get_xyz(col), (vec3){0.0f, 0.0f, 0.0f}, pupilMask));		// blend in pupil
     
-    float t = g_iTime*3.0f;
-    vec2 offs = {sinf(t+uv.y*25.0f), sinf(t+uv.x*25.0f)};
+    vec2 offs = {sinf(eyeTime+uv.y*25.0f), sinf(eyeTime+uv.x*25.0f)};
     offs = vec2_mul_one(offs,0.01f*(1.0f-smile));
     
     uv = vec2_add(uv,offs);
@@ -100,7 +99,7 @@ vec4 Eye(vec2 uv, float side, vec2 m, float smile) {
     return col;
 }
 
-vec4 Mouth(vec2 uv, float smile) {
+inline vec4 Mouth(vec2 uv, float smile) {
     uv = vec2_sub_one(uv,0.5f);
 	vec4 col = {0.5f, 0.18f, 0.05f, 1.0f};
     
@@ -124,7 +123,7 @@ vec4 Mouth(vec2 uv, float smile) {
     return col;
 }
 
-vec4 Head(vec2 uv) {
+inline vec4 Head(vec2 uv) {
 	vec4 col = {0.9f, 0.65f, 0.1f, 1.0f};
     
     float d = vec2_length(uv);
@@ -150,27 +149,25 @@ vec4 Head(vec2 uv) {
     return col;
 }
 
-vec4 Smiley(vec2 uv, vec2 m, float smile) {
+inline vec4 Smiley(vec2 uv, vec2 m, float smile, float eyeTime) {
 	vec4 col = {0.0f,0.0f,0.0f,0.0f};
     
-    if(vec2_length(uv)<.5) // only bother about pixels that are actually inside the head
+    if(vec2_lengthsq(uv) < 0.25f) // only bother about pixels that are actually inside the head
     {
         float side = sign(uv.x);
         uv.x = fabs(uv.x);
         vec4 head = Head(uv);
         col = vec4_mix(col, head, head.w);
 
-        if(vec2_length(vec2_sub(uv,(vec2){0.2f, 0.075f}))<0.175f) {
-            vec4 eye = Eye(within(uv, (vec4){0.03f, -0.1f, 0.37f, 0.25f}), side, m, smile);
+        if(vec2_lengthsq(vec2_sub(uv,(vec2){0.2f, 0.075f})) < 0.030625f) {
+            vec4 eye = Eye(within(uv, (vec4){0.03f, -0.1f, 0.37f, 0.25f}), side, m, smile, eyeTime);
             col = vec4_mix(col, eye, eye.w);
         }
-
-        if(vec2_length(vec2_sub(uv,(vec2){0.0f, -0.15f}))<0.3f) {
+        else if(vec2_lengthsq(vec2_sub(uv,(vec2){0.0f, -0.15f})) < 0.09f) {
             vec4 mouth = Mouth(within(uv, (vec4){-0.3f, -0.43f, 0.3f, -0.13f}), smile);
             col = vec4_mix(col, mouth, mouth.w);
         }
-
-        if(vec2_length(vec2_sub(uv,(vec2){0.185f, 0.325f}))<0.18f) {
+        else if(vec2_lengthsq(vec2_sub(uv,(vec2){0.185f, 0.325f})) < 0.0324f) {
             vec4 brow = Brow(within(uv, (vec4){0.03f, 0.2f, 0.4f, 0.45f}), smile);
             col = vec4_mix(col, brow, brow.w);
         }
@@ -179,29 +176,11 @@ vec4 Smiley(vec2 uv, vec2 m, float smile) {
     return col;
 }
 
-vec4 mainImage( vec2 uv )
+vec4 mainImage( vec2 uv, vec2 m, float smile, float eyeTime )
 {
-	float t = g_iTime;
-    
-    /*vec2 uv = vec2_div(fragCoord,iResolution);
-    uv = vec2_sub_one(uv,0.5f);
-    uv.x *= iResolution.x/iResolution.y;*/
-    
-    vec2 m; // make it that the eyes look around as time passes
-    {			
-    	float s = sinf(t*0.5f);
-        float c = cosf(t*0.38f);
-        
-        m = vec2_mul_one((vec2){s, c},0.4f);
-    }
-    
-    if(vec2_length(m) > 0.707f) 
-        m = (vec2){0.0f,0.0f};	// fix bug with sudden eye move
-    
     float d = vec2_dot(uv, uv);
-    uv = vec2_sub(uv, vec2_mul_one(m,sat(0.23f-d)));
+    uv= vec2_sub(uv, vec2_mul_one(m,sat(0.23f-d)));
     
-    float smile = sinf(t*0.5f)*0.5f+0.5f;
-	vec4 fragColor = Smiley(uv, m, smile);
+    vec4 fragColor = Smiley(uv, m, smile, eyeTime);
     return fragColor;
 }
