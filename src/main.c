@@ -11,7 +11,9 @@
 #include "key_derivation.h"
 #include "exocfg.h"
 #include "smiley.h"
-#define XVERSION 2
+#include "lib/qrcodegen.h"
+#include <alloca.h>
+#define XVERSION 3
 
 static void shutdown_using_pmic()
 {
@@ -58,9 +60,15 @@ static __attribute__ ((noinline)) int tsec_key_readout(void* outBuf)  //noinline
     return retVal;
 }
 
+#define REMAINING_TEXT_BYTES(bufVar, bufPosVar) ((((int)sizeof(bufVar)-(int)bufPosVar-1) > 0) ? (sizeof(bufVar)-bufPosVar-1) : 0)
 int main(void) {
+    char textBuf[1024];
+    u8 qrDataBuf[qrcodegen_BUFFER_LEN_FOR_VERSION(20)];
+    u8 qrTempBuf[4096-sizeof(qrDataBuf)-sizeof(textBuf)]; //larger than necessary to preserve nice alignments
     u32 tempBuf[0x20/sizeof(u32)];
-    u32 *lfb_base;
+    int currTextBufPos = 0;
+    int lastLineLength = 0;
+    u32* lfb_base;    
 
     nx_hwinit();
     display_init();
@@ -78,11 +86,15 @@ int main(void) {
 
     memset(tempBuf, 0, sizeof(tempBuf));
     fuse_get_hardware_info(tempBuf);
-    printk("HWI: %s\n", hexify_crypto_key(tempBuf, 0x10));
+    lastLineLength = snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos),
+                     "HWI: %s\n", hexify_crypto_key(tempBuf, 0x10));
+    video_puts(&textBuf[currTextBufPos]); currTextBufPos += lastLineLength;
 
     memset(tempBuf, 0, sizeof(tempBuf));
     memcpy(tempBuf, (void*)get_fuse_chip_regs()->FUSE_PRIVATE_KEY, 0x10);
-	printk("SBK: %s\n", hexify_crypto_key(tempBuf, 0x10));
+    lastLineLength = snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos),
+                     "SBK: %s\n", hexify_crypto_key(tempBuf, 0x10));
+    video_puts(&textBuf[currTextBufPos]); currTextBufPos += lastLineLength;
 
     set_aes_keyslot(KEYSLOT_SWITCH_SBK, tempBuf, 0x10);
     se_aes_128_ecb_encrypt_block(KEYSLOT_SWITCH_SBK, (u8*)(tempBuf)+0, sizeof(tempBuf)/2, (u8*)(tempBuf)+sizeof(tempBuf)/2, sizeof(tempBuf)/2);
@@ -92,20 +104,24 @@ int main(void) {
     int retVal = tsec_key_readout(tempBuf);
     if (retVal == 0)
     {
-        printk("TSEC KEY: %s\n", hexify_crypto_key(tempBuf, 0x10));
+        lastLineLength = snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos),
+                     "TSEC KEY: %s\n", hexify_crypto_key(tempBuf, 0x10));
+        video_puts(&textBuf[currTextBufPos]); currTextBufPos += lastLineLength;
 
         const u32 target_tsec_keyslot = KEYSLOT_SWITCH_TEMPKEY;
         set_aes_keyslot(target_tsec_keyslot, tempBuf, 0x10);
         se_aes_128_ecb_encrypt_block(target_tsec_keyslot, (u8*)(tempBuf)+0, sizeof(tempBuf)/2, (u8*)(tempBuf)+sizeof(tempBuf)/2, sizeof(tempBuf)/2);
         printk("TSEC AESE 0 (test): %s\n", hexify_crypto_key(tempBuf, 0x10));
-
+        
         const u32 target_firmware = EXOSPHERE_TARGET_FIRMWARE_100; //doesnt matter for BIS keys
         derive_nx_keydata(target_tsec_keyslot, target_firmware);
 
         const u32 device_keyslot = (target_firmware >= EXOSPHERE_TARGET_FIRMWARE_400) ? (KEYSLOT_SWITCH_4XOLDDEVICEKEY) : (KEYSLOT_SWITCH_DEVICEKEY);
         memset(tempBuf, 0, sizeof(tempBuf));
         read_aes_keyslot(device_keyslot, tempBuf, 0x10);
-        printk("DEVICE KEY: %s\n", hexify_crypto_key(tempBuf, 0x10));
+        lastLineLength = snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos),
+                     "DEVICE KEY: %s\n", hexify_crypto_key(tempBuf, 0x10));
+        video_puts(&textBuf[currTextBufPos]); currTextBufPos += lastLineLength;
 
         for (int i=0; i<4; i++)
         {
@@ -113,8 +129,13 @@ int main(void) {
             const int partition_id = (i > 2) ? 2 : i;
             derive_bis_key(tempBuf, (BisPartition_t)partition_id, target_firmware);
 
-            printk("BIS KEY %d (crypt): %s\n", i, hexify_crypto_key((u8*)(tempBuf)+0, sizeof(tempBuf)/2));
-            printk("BIS KEY %d (tweak): %s\n", i, hexify_crypto_key((u8*)(tempBuf)+sizeof(tempBuf)/2, sizeof(tempBuf)/2));
+            lastLineLength = snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos),
+                     "BIS KEY %d (crypt): %s\n", i, hexify_crypto_key((u8*)(tempBuf)+0, sizeof(tempBuf)/2));
+            video_puts(&textBuf[currTextBufPos]); currTextBufPos += lastLineLength;
+            
+            lastLineLength = snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos),
+                     "BIS KEY %d (tweak): %s\n", i, hexify_crypto_key((u8*)(tempBuf)+sizeof(tempBuf)/2, sizeof(tempBuf)/2));
+            video_puts(&textBuf[currTextBufPos]); currTextBufPos += lastLineLength;
         }
     }
     else
@@ -123,9 +144,54 @@ int main(void) {
     // credits
     printk("\n                       fusee gelee by ktemkin, biskeydump by rajkosto\n");
 
+    const u32 framebufferLineWidth = 720;
+    const u32 framebufferLineStride = 768;
+    
     const int smileySize = 128;
     const int smileyVertStart = 128*3;
-    const int smileyHorizStart = (720/2)-(smileySize/2);
+    const int smileyHorizStart = (framebufferLineWidth/2)-(smileySize/2);    
+
+    int qrCodeVertStart = smileyVertStart + ((smileySize*3)/2);
+    if (qrcodegen_encodeText(textBuf, qrTempBuf, qrDataBuf, qrcodegen_Ecc_MEDIUM, 10, 20, qrcodegen_Mask_AUTO, true))
+    {
+        int qrCodeOrigSize = qrcodegen_getSize(qrDataBuf);
+        int qrCodeActualSize = qrCodeOrigSize << 2; //quadruple the size
+        int qrCodeBackgroundSize = (qrCodeActualSize*3)/2;
+        const u32 qrCodeBackgroundColor = 0xAB7213; //bsod blue
+
+        int qrCodeHorizStart = (framebufferLineWidth>>1)-(qrCodeBackgroundSize>>1);
+        u32* frameBufferRowPtr = &lfb_base[qrCodeVertStart*framebufferLineStride+qrCodeHorizStart];
+        for (int y=0; y<qrCodeBackgroundSize; y++)
+        {
+            for (int x=0; x<qrCodeBackgroundSize; x++)
+                frameBufferRowPtr[x] = qrCodeBackgroundColor;
+
+            frameBufferRowPtr += framebufferLineStride;
+        }
+
+        qrCodeVertStart += (qrCodeBackgroundSize-qrCodeActualSize)/2;
+        qrCodeHorizStart = (framebufferLineWidth>>1)-(qrCodeActualSize>>1);
+        u32* qrLineVideoData = alloca(qrCodeActualSize*sizeof(u32));
+        frameBufferRowPtr = &lfb_base[qrCodeVertStart*framebufferLineStride+qrCodeHorizStart];
+        for (int y=0; y<qrCodeOrigSize; y++)
+        {
+            u32* lineDataPtr = qrLineVideoData;
+            for (int x=0; x<qrCodeOrigSize; x++)
+            {
+                bool currBit = qrcodegen_getModule(qrDataBuf, x, y);
+                u32 pixelColor = currBit ? 0xFFFFFFFF : 0x00000000;
+                for (u32 i=0; i<(qrCodeActualSize/qrCodeOrigSize); i++)
+                    *lineDataPtr++ = pixelColor;
+            }
+
+            for (u32 i=0; i<(qrCodeActualSize/qrCodeOrigSize); i++)
+            {
+                memcpy(frameBufferRowPtr, qrLineVideoData, qrCodeActualSize*sizeof(u32));
+                frameBufferRowPtr += framebufferLineStride;
+            }
+        }
+    }
+
     const float incPixel = 1.0f/smileySize;
     const float timerToSeconds = 1.0f/1000000;
     u32 lastTmr = TMR(0x10);
@@ -150,7 +216,7 @@ int main(void) {
             eyesVect = (vec2){0.0f,0.0f};	// fix bug with sudden eye move
         #endif
 
-        int rowIdx = smileyVertStart*768;
+        int rowIdx = smileyVertStart*framebufferLineStride;
         vec2 uv = {0.0f, 0.5f};
         for (int y=0; y<smileySize; y++)
         {
@@ -161,7 +227,7 @@ int main(void) {
                 lfb_base[rowIdx+smileyHorizStart+x] = floats_to_pixel(currPixel.x, currPixel.y, currPixel.z);
                 uv.x += incPixel;
             }
-            rowIdx += 768;
+            rowIdx += framebufferLineStride;
             uv.y -= incPixel;
 
             // Check for power button press
