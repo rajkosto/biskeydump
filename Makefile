@@ -27,6 +27,7 @@ CFLAGS = \
 	-fno-strict-aliasing \
 	-std=gnu11 \
 	-Wall \
+	-fstrict-volatile-bitfields
 	-DMINIZ_NO_ARCHIVE_WRITING_APIS \
 	-DMINIZ_NO_ZLIB_APIS \
 	-DMINIZ_NO_ARCHIVE_APIS \
