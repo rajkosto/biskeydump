@@ -15,7 +15,7 @@ This section is required by the original license of Atmosphere, GPLv2.
 
  * This originates from https://github.com/Atmosphere-NX/Atmosphere
  * everything except fusee-primary and key_derivation/masterkey/exocfg from fusee-secondary has been removed
- * tsec.c has been slightly modified (to include fw from tsecfw.inl, and print out crc32 of used fw)
+ * tsec.c has been slightly modified (to receive tsec fw by argument, and print out crc32 of used fw)
  * miniz (from https://github.com/richgel999/miniz) has been included to facilitate crc32 used in tsec.c
  * qrcodegen (from https://github.com/nayuki/QR-Code-generator) has been included so that a QR code image of the dumped data can be displayed
  * main.c has been modified to dump tsec key and store it into a global, then call key_derivation.c functions and dump bis keys

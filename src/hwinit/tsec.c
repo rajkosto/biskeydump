@@ -2,10 +2,6 @@
 #include "tsec.h"
 #include "clock.h"
 #include "t210.h"
-static const u8 _tsec_fw[0xF00] __attribute__((aligned(0x100))) = 
-{
-	#include "tsecfw.inl"
-};
 
 static int _tsec_dma_wait_idle()
 {
@@ -37,7 +33,7 @@ static int _tsec_dma_pa_to_internal_100(int not_imem, int i_offset, int pa_offse
 #include "../lib/printk.h"
 #include "../lib/miniz.h"
 
-int tsec_query(u32 carveout, u8 *dst, u32 rev)
+int tsec_query(const void* carveout, u8 *dst, u32 rev)
 {
 	int res = 0;
 
@@ -61,8 +57,7 @@ int tsec_query(u32 carveout, u8 *dst, u32 rev)
 	}
 
 	//Load firmware.
-	memcpy((void *)carveout, _tsec_fw, sizeof(_tsec_fw));
-	u32 theCrc = mz_crc32(MZ_CRC32_INIT, (void*)carveout, sizeof(_tsec_fw));
+	u32 theCrc = mz_crc32(MZ_CRC32_INIT, carveout, 0xF00);
 	printk("TSEC FW CRC32: %08x - %s\n", theCrc, (theCrc == 0xB035021F) ? "CORRECT" : "INCORRECT");
 
 #ifdef TEST_TSEC_RESET
@@ -97,8 +92,8 @@ int tsec_query(u32 carveout, u8 *dst, u32 rev)
     }
 #endif
 
-	TSEC(0x1110) = carveout >> 8;// tsec_dmatrfbase_r
-	for (u32 addr = 0; addr < sizeof(_tsec_fw); addr += 0x100)
+	TSEC(0x1110) = (u32)carveout >> 8;// tsec_dmatrfbase_r
+	for (u32 addr = 0; addr < 0xF00; addr += 0x100)
     {
 		if (!_tsec_dma_pa_to_internal_100(0, addr, addr))
 		{
