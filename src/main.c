@@ -8,12 +8,14 @@
 #include "hwinit/btn.h"
 #include "hwinit/i2c.h"
 #include "hwinit/t210.h"
+#include "sdmmc.h"
+#include "lib/miniz.h"
 #include "key_derivation.h"
 #include "exocfg.h"
 #include "smiley.h"
 #include "lib/qrcodegen.h"
 #include <alloca.h>
-#define XVERSION 3
+#define XVERSION 4
 
 static void shutdown_using_pmic()
 {
@@ -31,7 +33,7 @@ static void shutdown_using_pmic()
     i2c_send_byte(MAX77620_I2C_PERIPH, MAX77620_I2C_ADDR, MAX77620_REG_ONOFFCNFG1, regVal);
 }
 
-static __attribute__ ((noinline)) const char* hexify_crypto_key(const void* dataBuf, size_t keySize)
+static NOINLINE const char* hexify_crypto_key(const void* dataBuf, size_t keySize)
 {
     static char tempBuf[72];
     const u8* keyData = (const u8*)dataBuf;
@@ -46,16 +48,128 @@ static __attribute__ ((noinline)) const char* hexify_crypto_key(const void* data
     return tempBuf;
 }
 
-static __attribute__ ((noinline)) int tsec_key_readout(void* outBuf)  //noinline so we get the stack space back
+static NOINLINE int tsec_key_readout(void* outBuf)  //noinline so we get the stack space back
 {
     u8 carveoutData[0x1000];
-    u32 carveoutPtr = ((u32)carveoutData + 0xFF) & ~(0xFFu); //align to 0x100
-    mc_enable_ahb_redirect(carveoutPtr, carveoutPtr+0xF00); //the values here dont matter ? it redirects a 1MiB block which covers all of IDATA it seems
+    u32 carveoutCurrIdx = 0;
+    
+    struct mmc mmc;
+    memset(&mmc,0,sizeof(mmc));
+    mc_enable_ahb_redirect(); //needed for sdmmc as well
+    int sdMmcRetVal = sdmmc_init(&mmc, SWITCH_EMMC);
+    if (sdMmcRetVal != 0)
+    {
+        mc_disable_ahb_redirect();
+        printk("ERROR %d initializing SDMMC!\n", sdMmcRetVal);
+        return -10;
+    }
+    sdMmcRetVal = sdmmc_switch_part(&mmc, true, 0);
+    if (sdMmcRetVal != 0)
+    {
+        mc_disable_ahb_redirect();
+        printk("ERROR %d switching to boot0 partition!\n", sdMmcRetVal);
+        return -10;
+    }
+
+    static const u32 PKG1LDR_OFFSET = 0x100000;
+    static const u32 PKG1LDR_SIZE = 0x40000;    
+    static const u32 TSECFW_SIZE = 0xF00;
+
+    static const u32 SECTOR_SIZE = 512;
+    static const u32 BUFFER_SIZE_IN_SECTORS = sizeof(carveoutData)/SECTOR_SIZE;    
+    static const u32 PKG1LDR_SIZE_IN_SECTORS = PKG1LDR_SIZE/SECTOR_SIZE;
+
+    u32 tsecFoundAt = 0;
+    u32 totalSectorsRead = 0;
+    u32 currentSectorIdx = PKG1LDR_OFFSET/SECTOR_SIZE;
+    printk("eMMC initialized, looking for TSEC FW (scanning 0x%08x-0x%08x of boot0)\n", PKG1LDR_OFFSET, PKG1LDR_OFFSET+PKG1LDR_SIZE);
+    while (totalSectorsRead < PKG1LDR_SIZE_IN_SECTORS)
+    {
+        u32 numSectorsToRead = PKG1LDR_SIZE_IN_SECTORS-totalSectorsRead;
+        if (numSectorsToRead > BUFFER_SIZE_IN_SECTORS)
+            numSectorsToRead = BUFFER_SIZE_IN_SECTORS;
+
+        static const u32 MAX_SECTORS_PER_READ = 4;
+        if (numSectorsToRead > MAX_SECTORS_PER_READ)
+            numSectorsToRead = MAX_SECTORS_PER_READ;
+
+        u8* readPtr = carveoutData;
+        if (tsecFoundAt != 0)
+        {
+            readPtr = &carveoutData[carveoutCurrIdx];
+
+            u32 maxReadLimit = sizeof(carveoutData)-carveoutCurrIdx;
+            maxReadLimit /= SECTOR_SIZE;
+            if (numSectorsToRead > maxReadLimit)
+                numSectorsToRead = maxReadLimit;
+        }
+
+#ifdef SDMMC_DEBUGGING
+        printk("SDMMC: Reading bytes 0x%08x-0x%08x\n", currentSectorIdx*SECTOR_SIZE, (currentSectorIdx+numSectorsToRead)*SECTOR_SIZE);
+#endif
+        sdMmcRetVal = sdmmc_read(&mmc, readPtr, currentSectorIdx, numSectorsToRead);
+        if (sdMmcRetVal != 0)
+        {
+            printk("SDMMC ERROR Reading bytes 0x%08x-0x%08x: %d\n", sdMmcRetVal, currentSectorIdx*SECTOR_SIZE, (currentSectorIdx+numSectorsToRead)*SECTOR_SIZE);
+            break;
+        }
+        totalSectorsRead += numSectorsToRead;
+
+        u32 numBytesRead = numSectorsToRead*SECTOR_SIZE;
+        if (tsecFoundAt == 0) //havent found tsecfw start yet
+        {
+            for (u32 i=0; i<numBytesRead; i+=0x100) //tsecfw is always 0x100 aligned
+            {
+                u32 currentDataWord = 0;
+                memcpy(&currentDataWord, &readPtr[i], sizeof(currentDataWord));
+
+                static const u32 TSECFW_START_IDENT = 0xCF42004D; //in little endian
+                if (currentDataWord == TSECFW_START_IDENT)
+                {
+                    u32 numBytesWeHave = numBytesRead-i;
+                    memmove(&carveoutData[0], &readPtr[i], numBytesWeHave);
+                    carveoutCurrIdx = numBytesWeHave;
+                    tsecFoundAt = (currentSectorIdx*SECTOR_SIZE)+i;
+                    break;
+                }
+            }
+        }
+        else //read to tsecfw buffer
+        {
+            carveoutCurrIdx += numBytesRead;
+            if (carveoutCurrIdx >= TSECFW_SIZE)
+                break; //we are done
+        }
+
+        currentSectorIdx += numSectorsToRead;
+    }
+    mc_disable_ahb_redirect();
+	
+    if (tsecFoundAt == 0)
+    {
+        printk("ERROR: No TSEC FW found in pkg1ldr! (started at 0x%08x of boot0, ended at 0x%08x)\n", PKG1LDR_OFFSET, PKG1LDR_OFFSET+(totalSectorsRead*SECTOR_SIZE));
+        return -10;
+    }
+    else
+        printk("Found TSEC FW at offset 0x%08x of boot0 (0x%08x of pkg1ldr)\n", tsecFoundAt, tsecFoundAt-PKG1LDR_OFFSET);
+
+    u8* carveoutBytes = (u8*)(((u32)carveoutData + 0xFF) & ~(0xFFu)); //align to 0x100
+    u32 carveoutSize = (u32)carveoutData+sizeof(carveoutData)-(u32)carveoutBytes;
+    memmove(carveoutBytes, carveoutData, carveoutSize);
+    {
+        u32 theCrc = mz_crc32(MZ_CRC32_INIT, carveoutBytes, TSECFW_SIZE);
+        bool crcCorrect = (theCrc == 0xB035021F);
+        printk("TSEC FW CRC32: %08x - %s\n", theCrc, crcCorrect ? "CORRECT" : "INCORRECT");
+        if (!crcCorrect)
+			return -11;
+    }    
+    
     int retVal = 0;
     const u32 tsecRev = 1;
-    printk("TSEC using carveout 0x%08x rev %u\n", carveoutPtr, tsecRev);
+    printk("TSEC using carveout 0x%08x rev %u\n", (u32)carveoutBytes, tsecRev);
     memset(outBuf,0,0x10);
-    retVal = tsec_query(carveoutPtr, outBuf, tsecRev);
+    mc_enable_ahb_redirect();
+    retVal = tsec_query((u32)carveoutBytes, outBuf, tsecRev);
     mc_disable_ahb_redirect();
     return retVal;
 }
