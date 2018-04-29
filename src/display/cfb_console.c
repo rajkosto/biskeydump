@@ -540,7 +540,7 @@ static void memsetl (int *p, int c, int v)
 
 /*****************************************************************************/
 
-
+#ifdef SLOW_SCROLLING
 static void console_scrollup (void)
 {
 	/* copy up rows ignoring the first one */
@@ -572,6 +572,7 @@ static void console_scrollup (void)
 	memsetl (CONSOLE_ROW_LAST, CONSOLE_ROW_SIZE >> 2, CONSOLE_BG_COL);
 #endif
 }
+#endif
 
 /*****************************************************************************/
 
@@ -607,11 +608,16 @@ static void console_newline (void)
 
 	/* Check if we need to scroll the terminal */
 	if (console_row >= CONSOLE_ROWS) {
+		#ifdef SLOW_SCROLLING
 		/* Scroll everything up */
 		console_scrollup ();
 
 		/* Decrement row number */
 		console_row--;
+		#else
+			video_init(video_fb_address);
+			console_row = 0;
+		#endif
 	}
 }
 
