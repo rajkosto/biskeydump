@@ -202,12 +202,12 @@ void enable_clocks()
 	CLOCK(0x6A0) = CLOCK(0x6A0) & 0x1FFFFFFF | 0x80000000;
 }
 
-void mc_enable_ahb_redirect(u32 bom, u32 tom)
+void mc_enable_ahb_redirect()
 {
 	CLOCK(0x3A4) = CLOCK(0x3A4) & 0xFFF7FFFF | 0x80000;
 	//MC(MC_IRAM_REG_CTRL) &= 0xFFFFFFFE;
-	MC(MC_IRAM_BOM) = bom;
-	MC(MC_IRAM_TOM) = tom;
+	MC(MC_IRAM_BOM) = 0x40000000;
+	MC(MC_IRAM_TOM) = 0x4003F000;
 }
 
 void mc_disable_ahb_redirect()
