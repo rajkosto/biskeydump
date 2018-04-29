@@ -37,6 +37,7 @@ struct mmc {
 
     uint8_t read_block_order;
     bool uses_block_addressing;
+    uint8_t partition_switch_time;
 
     /* Pointers to hardware structures */
     volatile struct tegra_sdmmc *regs;
@@ -60,8 +61,7 @@ enum sdmmc_controller {
  * @param controller The controller number to be initialized. Either SWITCH_MICROSD or SWITCH_EMMC.
  */
 int sdmmc_init(struct mmc *mmc, enum sdmmc_controller controller);
-
-
+int sdmmc_switch_part(struct mmc *mmc, bool isBootPart, bool partNum);
 /**
  * Reads a sector or sectors from a given SD card.
  *

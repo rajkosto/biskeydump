@@ -259,6 +259,7 @@ static const uint16_t sdmmc_bounce_dma_boundary = MMC_DMA_BOUNDARY_16K;
  */
 void mmc_print(struct mmc *mmc, char *fmt, ...)
 {
+#ifdef SDMMC_DEBUGGING
     va_list list;
 
     // TODO: check SDMMC log level before printing
@@ -268,6 +269,7 @@ void mmc_print(struct mmc *mmc, char *fmt, ...)
     vprintk(fmt, list);
     printk("\n");
     va_end(list);
+#endif
 }
 
 /**
@@ -1235,7 +1237,11 @@ static int sdmmc_read_and_parse_ext_csd(struct mmc *mmc)
         return rc;
     }
 
-    // Parse the extended CSD here.
+	// Parse the extended CSD here.
+    mmc->partition_switch_time = ext_csd[199];
+    mmc_print(mmc, "Partition switch time is %ums\n", (uint32_t)mmc->partition_switch_time*10);
+
+#ifdef SDMMC_DEBUGGING    
     mmc_print(mmc, "extended CSD looks like:");
     for (int i = 0; i < 64; ++i) {
 
@@ -1245,8 +1251,9 @@ static int sdmmc_read_and_parse_ext_csd(struct mmc *mmc)
 
         printk("%02x ", ext_csd[i]);
     }
-
     printk("\n");
+#endif
+
     return 0;
 }
 
@@ -1424,6 +1431,39 @@ int sdmmc_init(struct mmc *mmc, enum sdmmc_controller controller)
     }
 
     return 0;
+}
+
+int sdmmc_switch_part(struct mmc *mmc, bool isBootPart, bool partNum)
+{
+    static const uint32_t MMC_SWITCH_MODE_WRITE_BYTE    = 0x03; // Set target byte to value
+    static const uint32_t EXT_CSD_PARTITION_CONFIG      = 179;
+    static const uint32_t EXT_CSD_BOOT_ACK_ENABLE  = (1 << 6);
+    static const uint32_t EXT_CSD_PARTITION_ACCESS = (1 << 0);
+    static const uint32_t EXT_CSD_BOOT_PARTITION_NUM = (1 << 3);
+
+
+    uint32_t index = EXT_CSD_PARTITION_CONFIG;
+    uint32_t value = 0;
+    if (isBootPart)
+    {
+        value |= EXT_CSD_BOOT_ACK_ENABLE | EXT_CSD_PARTITION_ACCESS;
+        if (partNum)
+            value |= EXT_CSD_BOOT_PARTITION_NUM;
+    }
+    uint32_t cmdarg = (MMC_SWITCH_MODE_WRITE_BYTE << 24) | (index << 16) | (value << 8);
+
+    int rc = sdmmc_send_command(mmc, CMD_SWITCH_MODE, MMC_RESPONSE_LEN48_CHK_BUSY, MMC_CHECKS_ALL, cmdarg, NULL, 0, false, NULL);
+    if (rc)
+    {
+        mmc_print(mmc, "failed to change card boot partition (%d)!", rc);
+        return rc;
+    }
+
+    uint32_t startTime = get_time();
+    uint32_t timeoutUs = (uint32_t)mmc->partition_switch_time*(10*1000); //to ms, then to us
+    while(get_time_since(startTime) < timeoutUs) {}
+
+    return rc;
 }
 
 
