@@ -1,0 +1,16 @@
+{
+    "files.associations": {
+        "key_derivation.h": "c",
+        "i2c.h": "c",
+        "cmath": "c",
+        "floats.h": "c",
+        "math.h": "c",
+        "fixmath.h": "c",
+        "fract32.h": "c",
+        "fix16.h": "c",
+        "types.h": "c",
+        "printk.h": "c",
+        "t210.h": "c",
+        "string.h": "c"
+    }
+}
