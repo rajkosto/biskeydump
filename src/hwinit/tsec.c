@@ -30,17 +30,14 @@ static int _tsec_dma_pa_to_internal_100(int not_imem, int i_offset, int pa_offse
 	return _tsec_dma_wait_idle();
 }
 
-#include "../lib/printk.h"
-#include "../lib/miniz.h"
-
-int tsec_query(const void* carveout, u8 *dst, u32 rev)
+int tsec_query(u32 carveout, u8 *dst, u32 rev)
 {
 	int res = 0;
 
 	//Enable clocks.
 	clock_enable_host1x();
 	clock_enable_tsec();
-	clock_enable_sor_safe(); //same behaviour when disabled
+	clock_enable_sor_safe();
 	clock_enable_sor0();
 	clock_enable_sor1();
 	clock_enable_kfuse();
@@ -57,9 +54,6 @@ int tsec_query(const void* carveout, u8 *dst, u32 rev)
 	}
 
 	//Load firmware.
-	u32 theCrc = mz_crc32(MZ_CRC32_INIT, carveout, 0xF00);
-	printk("TSEC FW CRC32: %08x - %s\n", theCrc, (theCrc == 0xB035021F) ? "CORRECT" : "INCORRECT");
-
 #ifdef TEST_TSEC_RESET
     static const u32 bit5_CPU_STOPPED = 1u << 5;
     static const u32 bit4_CPU_HALTED = 1u << 4;
@@ -91,24 +85,22 @@ int tsec_query(const void* carveout, u8 *dst, u32 rev)
             (cpuState & bit0_IINVAL) ? 1 : 0);
     }
 #endif
-
-	TSEC(0x1110) = (u32)carveout >> 8;// tsec_dmatrfbase_r
+	TSEC(0x1110) = carveout >> 8;// tsec_dmatrfbase_r
 	for (u32 addr = 0; addr < 0xF00; addr += 0x100)
-    {
+	{
 		if (!_tsec_dma_pa_to_internal_100(0, addr, addr))
 		{
 			res = -2;
 			goto out;
-		}        
-    }
+		}
+	}
 
 	//Execute firmware.
 	HOST1X(0x3300) = 0x34C2E1DA;
 	TSEC(0x1044) = 0;
 	TSEC(0x1040) = rev;
 	TSEC(0x1104) = 0; // tsec_bootvec_r
-    TSEC(0x1100) = 2; // tsec_cpuctl_r
-
+	TSEC(0x1100) = 2; // tsec_cpuctl_r
 	if (!_tsec_dma_wait_idle())
 	{
 		res = -3;
