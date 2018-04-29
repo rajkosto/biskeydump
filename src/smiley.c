@@ -11,19 +11,19 @@
 #define B(a, b, blur, t) S(a-blur, a+blur, t)*S(b+blur, b-blur, t)
 #define sat(x) clamp(x, 0.0f, 1.0f)
 
-inline float remap01(float a, float b, float t) {
+inline ALINLINE float remap01(float a, float b, float t) {
 	return sat((t-a)/(b-a));
 }
 
-inline float remap(float a, float b, float c, float d, float t) {
+inline ALINLINE float remap(float a, float b, float c, float d, float t) {
 	return sat((t-a)/(b-a)) * (d-c) + c;
 }
 
-inline vec2 within(vec2 uv, vec4 rect) {
+inline ALINLINE vec2 within(vec2 uv, vec4 rect) {
 	return vec2_div(vec2_sub(uv,get_xy(rect)),vec2_sub(get_zw(rect),get_xy(rect)));
 }
 
-inline vec4 Brow(vec2 uv, float smile) {
+inline ALINLINE vec4 Brow(vec2 uv, float smile) {
     float offs = mix(0.2f, 0.0f, smile);
     uv.y += offs;
     
@@ -63,7 +63,7 @@ inline vec4 Brow(vec2 uv, float smile) {
     return col;
 }
 
-inline vec4 Eye(vec2 uv, float side, vec2 m, float smile, float eyeTime) {
+inline ALINLINE vec4 Eye(vec2 uv, float side, vec2 m, float smile, float eyeTime) {
     uv = vec2_sub_one(uv,0.5f);
     uv.x *= side;
     
@@ -99,7 +99,7 @@ inline vec4 Eye(vec2 uv, float side, vec2 m, float smile, float eyeTime) {
     return col;
 }
 
-inline vec4 Mouth(vec2 uv, float smile) {
+inline ALINLINE vec4 Mouth(vec2 uv, float smile) {
     uv = vec2_sub_one(uv,0.5f);
 	vec4 col = {0.5f, 0.18f, 0.05f, 1.0f};
     
@@ -123,7 +123,7 @@ inline vec4 Mouth(vec2 uv, float smile) {
     return col;
 }
 
-inline vec4 Head(vec2 uv) {
+inline ALINLINE vec4 Head(vec2 uv) {
 	vec4 col = {0.9f, 0.65f, 0.1f, 1.0f};
     
     float d = vec2_length(uv);
@@ -149,7 +149,7 @@ inline vec4 Head(vec2 uv) {
     return col;
 }
 
-inline vec4 Smiley(vec2 uv, vec2 m, float smile, float eyeTime) {
+inline ALINLINE vec4 Smiley(vec2 uv, vec2 m, float smile, float eyeTime) {
 	vec4 col = {0.0f,0.0f,0.0f,0.0f};
     
     if(vec2_lengthsq(uv) < 0.25f) // only bother about pixels that are actually inside the head

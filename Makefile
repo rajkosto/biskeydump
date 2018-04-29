@@ -20,14 +20,14 @@ ASFLAGS := -g $(ARCH)
 CFLAGS = \
 	$(ARCH) \
 	-g \
-	-O2 \
+	-Os \
 	-fomit-frame-pointer \
 	-ffunction-sections \
 	-fdata-sections \
 	-fno-strict-aliasing \
+	-fstrict-volatile-bitfields \
 	-std=gnu11 \
 	-Wall \
-	-fstrict-volatile-bitfields
 	-DMINIZ_NO_ARCHIVE_WRITING_APIS \
 	-DMINIZ_NO_ZLIB_APIS \
 	-DMINIZ_NO_ARCHIVE_APIS \
