@@ -3,6 +3,8 @@
 #include "se.h"
 #include "exocfg.h"
 #include "fuse.h"
+#include "sdmmc.h"
+#include "lib/printk.h"
 
 static const u8 keyblob_seeds[MASTERKEY_REVISION_MAX][0x10] =
 {
@@ -18,12 +20,10 @@ static const u8 keyblob_mac_seed[0x10] =
     0x59, 0xC7, 0xFB, 0x6F, 0xBE, 0x9B, 0xBE, 0x87, 0x65, 0x6B, 0x15, 0xC0, 0x53, 0x73, 0x36, 0xA5
 };
 
-#ifdef USE_KEYBLOB_DATA
 static const uint8_t masterkey_seed[0x10] = 
 {
     0xD8, 0xA2, 0x41, 0x0A, 0xC6, 0xC5, 0x90, 0x01, 0xC6, 0x1D, 0x6A, 0x26, 0x7C, 0x51, 0x3F, 0x3C
 };
-#endif
 
 static const uint8_t devicekey_seed[0x10] = 
 {
@@ -35,25 +35,33 @@ static const uint8_t devicekey_4x_seed[0x10] =
     0x0C, 0x91, 0x09, 0xDB, 0x93, 0x93, 0x07, 0x81, 0x07, 0x3C, 0xC4, 0x16, 0x22, 0x7C, 0x6C, 0x28
 };
 
-#ifdef USE_KEYBLOB_DATA
 static const uint8_t masterkey_4x_seed[0x10] = 
 {
     0x2D, 0xC1, 0xF4, 0x8D, 0xF3, 0x5B, 0x69, 0x33, 0x42, 0x10, 0xAC, 0x65, 0xDA, 0x90, 0x46, 0x66
 };
-#endif
 
-void get_tsec_key(u32 tsec_src_keyslot, void* dst) {
-    u32 keyBuf[0x10/sizeof(u32)];
-    read_aes_keyslot(tsec_src_keyslot, keyBuf, sizeof(keyBuf));
-    memcpy(dst, keyBuf, sizeof(keyBuf));
-}
-
-void get_keyblob(void *dst, u32 revision) {
+static int get_keyblob(mmc_t* mmcPart, void *dst, u32 revision) {
     if (revision >= 0x20) {
         generic_panic();
     }
     
-    /* TODO: Read the appropriate keyblob from eMMC Boot0 partition. */
+    static const u32 BOOT0_KEYBLOBS_START = 0x180000;
+    static const u32 KEYBLOB_DATA_SIZE = 0x200;
+    static const u32 SECTOR_SIZE = 512;
+
+    u8 keyblobReadData[KEYBLOB_DATA_SIZE];
+    memset(keyblobReadData, 0, sizeof(keyblobReadData));
+
+    u32 wantedKeyblobOffset = BOOT0_KEYBLOBS_START + (revision*KEYBLOB_DATA_SIZE);
+    int rc = sdmmc_read(mmcPart, keyblobReadData, wantedKeyblobOffset/SECTOR_SIZE, KEYBLOB_DATA_SIZE/SECTOR_SIZE);
+    if (rc != 0)
+    {
+        printk("Error %d reading keyblob data (of size 0x%04x) from offset 0x%08x of eMMC boot!", rc, KEYBLOB_DATA_SIZE, wantedKeyblobOffset);
+        return rc;
+    }
+
+    memcpy(dst, keyblobReadData, sizeof(nx_keyblob_t));
+    return 0;
 }
 
 bool safe_memcmp(u8 *a, u8 *b, u32 sz) {
@@ -65,7 +73,7 @@ bool safe_memcmp(u8 *a, u8 *b, u32 sz) {
 }
 
 /* Derive all Switch keys. */
-void derive_nx_keydata(u32 tsec_keyslot_src, u32 target_firmware) {
+int derive_nx_keydata(mmc_t* mmcPart, u32 target_firmware) {
     u8 work_buffer[0x10];
     nx_keyblob_t keyblob;
     
@@ -75,15 +83,13 @@ void derive_nx_keydata(u32 tsec_keyslot_src, u32 target_firmware) {
     set_aes_keyslot_flags(0xD, 0x15);
     #endif
     
-    /* Set TSEC key. */
-    get_tsec_key(tsec_keyslot_src,work_buffer);
-    set_aes_keyslot(0xD, work_buffer, 0x10); //0xD now has TSEC key    
+    /* Slot 0xD should have TSEC key from main.c */    
     
     /* Get keyblob, always try to set up the highest possible master key. */
     /* TODO: Should we iterate, trying lower keys on failure? */
-    #ifdef USE_KEYBLOB_DATA
-    get_keyblob(&keyblob, MASTERKEY_REVISION_500_CURRENT);
-    #endif
+    int rc = get_keyblob(mmcPart, &keyblob, MASTERKEY_REVISION_500_CURRENT);
+    if (rc != 0)
+        return -13;
     
     /* Derive both keyblob key 1, and keyblob key latest. */
     se_aes_ecb_decrypt_block(0xD, work_buffer, 0x10, keyblob_seeds[MASTERKEY_REVISION_100_230], 0x10); //decrypt keyblob_seed into work_buffer using TSEC key
@@ -97,10 +103,10 @@ void derive_nx_keydata(u32 tsec_keyslot_src, u32 target_firmware) {
     decrypt_data_into_keyslot(0xB, 0xD, keyblob_mac_seed, 0x10); //put the same thing into keyslot 0xB
     
     /* Validate keyblob. */
-    #ifdef USE_KEYBLOB_DATA
     se_compute_aes_128_cmac(0xB, work_buffer, 0x10, keyblob.mac + sizeof(keyblob.mac), sizeof(keyblob) - sizeof(keyblob.mac));
     if (safe_memcmp(keyblob.mac, work_buffer, 0x10)) {
-        generic_panic();
+        printk("Keyblob decrypted using current SBK & TSEC keys NOT VALID!\n");
+        return -14;
     }
     
     /* Decrypt keyblob. */
@@ -109,7 +115,6 @@ void derive_nx_keydata(u32 tsec_keyslot_src, u32 target_firmware) {
     /* Get needed data. */
     set_aes_keyslot(0xC, keyblob.keys[0], 0x10); //0xC now has decrypted keyblob key[0]
     /* We don't need the Package1 Key, but for reference: set_aes_keyslot(0xB, keyblob.keys[8], 0x10); */
-    #endif
     
     /* Clear keyblob. */
     memset(keyblob.data, 0, sizeof(keyblob.data));    
@@ -120,34 +125,30 @@ void derive_nx_keydata(u32 tsec_keyslot_src, u32 target_firmware) {
         case EXOSPHERE_TARGET_FIRMWARE_200:
         case EXOSPHERE_TARGET_FIRMWARE_300: 
             decrypt_data_into_keyslot(0xD, 0xF, devicekey_seed, 0x10);
-            #ifdef USE_KEYBLOB_DATA
             decrypt_data_into_keyslot(0xC, 0xC, masterkey_seed, 0x10);
-            #endif
             break;
         case EXOSPHERE_TARGET_FIRMWARE_400: 
             decrypt_data_into_keyslot(0xD, 0xF, devicekey_4x_seed, 0x10);
             decrypt_data_into_keyslot(0xF, 0xF, devicekey_seed, 0x10);
-            #ifdef USE_KEYBLOB_DATA
             decrypt_data_into_keyslot(0xE, 0xC, masterkey_4x_seed, 0x10);
             decrypt_data_into_keyslot(0xC, 0xC, masterkey_seed, 0x10);
-            #endif
             break;
         case EXOSPHERE_TARGET_FIRMWARE_500: 
             decrypt_data_into_keyslot(0xA, 0xF, devicekey_4x_seed, 0x10);
             decrypt_data_into_keyslot(0xF, 0xF, devicekey_seed, 0x10);
-            #ifdef USE_KEYBLOB_DATA
             decrypt_data_into_keyslot(0xE, 0xC, masterkey_4x_seed, 0x10);
             decrypt_data_into_keyslot(0xC, 0xC, masterkey_seed, 0x10);
-            #endif
             break;
         default:
             generic_panic();
     }
     
+    #ifdef USE_MASTERKEYS
     /* Setup master key revision, derive older master keys for use. */
-    #ifdef USE_KEYBLOB_DATA
     mkey_detect_revision();
     #endif
+
+    return 0;
 }
 
 /* Sets final keyslot flags, for handover to TZ/Exosphere. Setting these will prevent the BPMP from using the device key or master key. */

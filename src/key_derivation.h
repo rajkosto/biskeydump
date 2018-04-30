@@ -29,7 +29,8 @@ typedef struct {
     };
 } nx_keyblob_t;
 
-void derive_nx_keydata(u32 tsec_keyslot_src, u32 target_firmware);
+typedef struct mmc mmc_t;
+int derive_nx_keydata(mmc_t* mmcPart, u32 target_firmware);
 void finalize_nx_keydata(u32 target_firmware);
 
 void derive_bis_key(void *dst, BisPartition_t partition_id, u32 target_firmware);

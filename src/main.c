@@ -15,7 +15,7 @@
 #include "smiley.h"
 #include "lib/qrcodegen.h"
 #include <alloca.h>
-#define XVERSION 4
+#define XVERSION 5
 
 static void shutdown_using_pmic()
 {
@@ -48,29 +48,11 @@ static NOINLINE const char* hexify_crypto_key(const void* dataBuf, size_t keySiz
     return tempBuf;
 }
 
-static NOINLINE int tsec_key_readout(void* outBuf)  //noinline so we get the stack space back
+static NOINLINE int tsec_key_readout(struct mmc* mmc, void* outBuf)  //noinline so we get the stack space back
 {
     u8 carveoutData[0x1000];
     u32 carveoutCurrIdx = 0;
     
-    struct mmc mmc;
-    memset(&mmc,0,sizeof(mmc));
-    mc_enable_ahb_redirect(); //needed for sdmmc as well
-    int sdMmcRetVal = sdmmc_init(&mmc, SWITCH_EMMC);
-    if (sdMmcRetVal != 0)
-    {
-        mc_disable_ahb_redirect();
-        printk("ERROR %d initializing SDMMC!\n", sdMmcRetVal);
-        return -10;
-    }
-    sdMmcRetVal = sdmmc_switch_part(&mmc, true, 0);
-    if (sdMmcRetVal != 0)
-    {
-        mc_disable_ahb_redirect();
-        printk("ERROR %d switching to boot0 partition!\n", sdMmcRetVal);
-        return -10;
-    }
-
     static const u32 PKG1LDR_OFFSET = 0x100000;
     static const u32 PKG1LDR_SIZE = 0x40000;    
     static const u32 TSECFW_SIZE = 0xF00;
@@ -107,7 +89,7 @@ static NOINLINE int tsec_key_readout(void* outBuf)  //noinline so we get the sta
 #ifdef SDMMC_DEBUGGING
         printk("SDMMC: Reading bytes 0x%08x-0x%08x\n", currentSectorIdx*SECTOR_SIZE, (currentSectorIdx+numSectorsToRead)*SECTOR_SIZE);
 #endif
-        sdMmcRetVal = sdmmc_read(&mmc, readPtr, currentSectorIdx, numSectorsToRead);
+        int sdMmcRetVal = sdmmc_read(mmc, readPtr, currentSectorIdx, numSectorsToRead);
         if (sdMmcRetVal != 0)
         {
             printk("SDMMC ERROR Reading bytes 0x%08x-0x%08x: %d\n", sdMmcRetVal, currentSectorIdx*SECTOR_SIZE, (currentSectorIdx+numSectorsToRead)*SECTOR_SIZE);
@@ -143,8 +125,7 @@ static NOINLINE int tsec_key_readout(void* outBuf)  //noinline so we get the sta
 
         currentSectorIdx += numSectorsToRead;
     }
-    mc_disable_ahb_redirect();
-	
+    	
     if (tsecFoundAt == 0)
     {
         printk("ERROR: No TSEC FW found in pkg1ldr! (started at 0x%08x of boot0, ended at 0x%08x)\n", PKG1LDR_OFFSET, PKG1LDR_OFFSET+(totalSectorsRead*SECTOR_SIZE));
@@ -168,9 +149,7 @@ static NOINLINE int tsec_key_readout(void* outBuf)  //noinline so we get the sta
     const u32 tsecRev = 1;
     printk("TSEC using carveout 0x%08x rev %u\n", (u32)carveoutBytes, tsecRev);
     memset(outBuf,0,0x10);
-    mc_enable_ahb_redirect();
     retVal = tsec_query((u32)carveoutBytes, outBuf, tsecRev);
-    mc_disable_ahb_redirect();
     return retVal;
 }
 
@@ -214,49 +193,70 @@ int main(void) {
     se_aes_128_ecb_encrypt_block(KEYSLOT_SWITCH_SBK, (u8*)(tempBuf)+0, sizeof(tempBuf)/2, (u8*)(tempBuf)+sizeof(tempBuf)/2, sizeof(tempBuf)/2);
     printk("SBK AESE 0 (test): %s\n", hexify_crypto_key(tempBuf, 0x10));
 
-    memset(tempBuf, 0, sizeof(tempBuf));
-    int retVal = tsec_key_readout(tempBuf);
+    struct mmc mmcPart;
+    memset(&mmcPart,0,sizeof(mmcPart));
+    mc_enable_ahb_redirect(); //needed for sdmmc as well
+    int retVal = sdmmc_init(&mmcPart, SWITCH_EMMC);
+    if (retVal != 0)
+        printk("ERROR %d initializing SDMMC!\n", retVal);
+    else
+    {
+        retVal = sdmmc_switch_part(&mmcPart, true, 0);
+        if (retVal != 0)
+            printk("ERROR %d switching to boot0 partition!\n", retVal);
+        else
+        {
+            memset(tempBuf, 0, sizeof(tempBuf));
+            retVal = tsec_key_readout(&mmcPart, tempBuf);
+        }
+    }
+    
     if (retVal == 0)
     {
         lastLineLength = snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos),
                      "TSEC KEY: %s\n", hexify_crypto_key(tempBuf, 0x10));
         video_puts(&textBuf[currTextBufPos]); currTextBufPos += lastLineLength;
 
-        const u32 target_tsec_keyslot = KEYSLOT_SWITCH_TEMPKEY;
+        const u32 target_tsec_keyslot = KEYSLOT_SWITCH_DEVICEKEY;
         set_aes_keyslot(target_tsec_keyslot, tempBuf, 0x10);
         se_aes_128_ecb_encrypt_block(target_tsec_keyslot, (u8*)(tempBuf)+0, sizeof(tempBuf)/2, (u8*)(tempBuf)+sizeof(tempBuf)/2, sizeof(tempBuf)/2);
         printk("TSEC AESE 0 (test): %s\n", hexify_crypto_key(tempBuf, 0x10));
         
         const u32 target_firmware = EXOSPHERE_TARGET_FIRMWARE_100; //doesnt matter for BIS keys
-        derive_nx_keydata(target_tsec_keyslot, target_firmware);
-
-        const u32 device_keyslot = (target_firmware >= EXOSPHERE_TARGET_FIRMWARE_400) ? (KEYSLOT_SWITCH_4XOLDDEVICEKEY) : (KEYSLOT_SWITCH_DEVICEKEY);
-        memset(tempBuf, 0, sizeof(tempBuf));
-        read_aes_keyslot(device_keyslot, tempBuf, 0x10);
-        lastLineLength = snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos),
-                     "DEVICE KEY: %s\n", hexify_crypto_key(tempBuf, 0x10));
-        video_puts(&textBuf[currTextBufPos]); currTextBufPos += lastLineLength;
-
-        for (int i=0; i<4; i++)
+        retVal = derive_nx_keydata(&mmcPart, target_firmware);
+        if (retVal == 0)
         {
+            const u32 device_keyslot = (target_firmware >= EXOSPHERE_TARGET_FIRMWARE_400) ? (KEYSLOT_SWITCH_4XOLDDEVICEKEY) : (KEYSLOT_SWITCH_DEVICEKEY);
             memset(tempBuf, 0, sizeof(tempBuf));
-            const int partition_id = (i > 2) ? 2 : i;
-            derive_bis_key(tempBuf, (BisPartition_t)partition_id, target_firmware);
+            read_aes_keyslot(device_keyslot, tempBuf, 0x10);
+            lastLineLength = snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos),
+                        "DEVICE KEY: %s\n", hexify_crypto_key(tempBuf, 0x10));
+            video_puts(&textBuf[currTextBufPos]); currTextBufPos += lastLineLength;
 
-            lastLineLength = snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos),
-                     "BIS KEY %d (crypt): %s\n", i, hexify_crypto_key((u8*)(tempBuf)+0, sizeof(tempBuf)/2));
-            video_puts(&textBuf[currTextBufPos]); currTextBufPos += lastLineLength;
-            
-            lastLineLength = snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos),
-                     "BIS KEY %d (tweak): %s\n", i, hexify_crypto_key((u8*)(tempBuf)+sizeof(tempBuf)/2, sizeof(tempBuf)/2));
-            video_puts(&textBuf[currTextBufPos]); currTextBufPos += lastLineLength;
+            for (int i=0; i<4; i++)
+            {
+                memset(tempBuf, 0, sizeof(tempBuf));
+                const int partition_id = (i > 2) ? 2 : i;
+                derive_bis_key(tempBuf, (BisPartition_t)partition_id, target_firmware);
+
+                lastLineLength = snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos),
+                        "BIS KEY %d (crypt): %s\n", i, hexify_crypto_key((u8*)(tempBuf)+0, sizeof(tempBuf)/2));
+                video_puts(&textBuf[currTextBufPos]); currTextBufPos += lastLineLength;
+                
+                lastLineLength = snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos),
+                        "BIS KEY %d (tweak): %s\n", i, hexify_crypto_key((u8*)(tempBuf)+sizeof(tempBuf)/2, sizeof(tempBuf)/2));
+                video_puts(&textBuf[currTextBufPos]); currTextBufPos += lastLineLength;
+            }
         }
+        else
+            printk("ERROR deriving device keydata (retVal %d), cannot continue\n", retVal);
     }
     else
-        printk("ERROR getting TSEC key (retVal %d), cannot continue (is the TSEC firmware correct?)\n", retVal);
+        printk("ERROR getting TSEC key (retVal %d), cannot continue\n", retVal);
 
     // credits
     printk("\n                       fusee gelee by ktemkin, biskeydump by rajkosto\n");
+    mc_disable_ahb_redirect(); //no longer needed 
 
     const u32 framebufferLineWidth = 720;
     const u32 framebufferLineStride = 768;
@@ -271,7 +271,7 @@ int main(void) {
         int qrCodeOrigSize = qrcodegen_getSize(qrDataBuf);
         int qrCodeActualSize = qrCodeOrigSize << 2; //quadruple the size
         int qrCodeBackgroundSize = (qrCodeActualSize*3)/2;
-        const u32 qrCodeBackgroundColor = 0xAB7213; //bsod blue
+        u32 qrCodeBackgroundColor = (retVal == 0) ? 0xAB7213u : 0xFFu; //bsod blue or very red
 
         int qrCodeHorizStart = (framebufferLineWidth>>1)-(qrCodeBackgroundSize>>1);
         u32* frameBufferRowPtr = &lfb_base[qrCodeVertStart*framebufferLineStride+qrCodeHorizStart];
