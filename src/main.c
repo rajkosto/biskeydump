@@ -201,7 +201,7 @@ int main(void) {
         printk("ERROR %d initializing SDMMC!\n", retVal);
     else
     {
-        retVal = sdmmc_switch_part(&mmcPart, true, 0);
+        retVal = sdmmc_switch_part(&mmcPart, 1);
         if (retVal != 0)
             printk("ERROR %d switching to boot0 partition!\n", retVal);
         else

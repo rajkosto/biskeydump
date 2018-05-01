@@ -1433,25 +1433,15 @@ int sdmmc_init(struct mmc *mmc, enum sdmmc_controller controller)
     return 0;
 }
 
-int sdmmc_switch_part(struct mmc *mmc, bool isBootPart, bool partNum)
+int sdmmc_switch_part(struct mmc *mmc, uint8_t partNum)
 {
     static const uint32_t MMC_SWITCH_MODE_WRITE_BYTE    = 0x03; // Set target byte to value
     static const uint32_t EXT_CSD_PARTITION_CONFIG      = 179;
-    static const uint32_t EXT_CSD_BOOT_ACK_ENABLE  = (1 << 6);
-    static const uint32_t EXT_CSD_PARTITION_ACCESS = (1 << 0);
-    static const uint32_t EXT_CSD_BOOT_PARTITION_NUM = (1 << 3);
-
 
     uint32_t index = EXT_CSD_PARTITION_CONFIG;
-    uint32_t value = 0;
-    if (isBootPart)
-    {
-        value |= EXT_CSD_BOOT_ACK_ENABLE | EXT_CSD_PARTITION_ACCESS;
-        if (partNum)
-            value |= EXT_CSD_BOOT_PARTITION_NUM;
-    }
+    uint32_t value = partNum;
     uint32_t cmdarg = (MMC_SWITCH_MODE_WRITE_BYTE << 24) | (index << 16) | (value << 8);
-
+    
     int rc = sdmmc_send_command(mmc, CMD_SWITCH_MODE, MMC_RESPONSE_LEN48_CHK_BUSY, MMC_CHECKS_ALL, cmdarg, NULL, 0, false, NULL);
     if (rc)
     {

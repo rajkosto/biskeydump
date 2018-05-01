@@ -61,7 +61,14 @@ enum sdmmc_controller {
  * @param controller The controller number to be initialized. Either SWITCH_MICROSD or SWITCH_EMMC.
  */
 int sdmmc_init(struct mmc *mmc, enum sdmmc_controller controller);
-int sdmmc_switch_part(struct mmc *mmc, bool isBootPart, bool partNum);
+
+/**
+ * Switches the currently active eMMC partition number
+ *
+ * @param mmc The MMC device to work with.
+ * @param partNum Which partition to switch to (0=USER, 1=BOOT0, 2=BOOT1)
+ */
+int sdmmc_switch_part(struct mmc *mmc, uint8_t partNum);
 /**
  * Reads a sector or sectors from a given SD card.
  *
