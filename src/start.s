@@ -33,7 +33,7 @@ _start:
 
     _relocation_loop_end:
     /* Set the stack pointer */
-    ldr sp, =0x40008000
+    ldr sp, =0x4003F000
     mov fp, #0
 
     /* Clear .bss */
