@@ -16,6 +16,7 @@
 #include "key_derivation.h"
 #include "exocfg.h"
 #include "smiley.h"
+#include "lib/heap.h"
 #include "lib/crc32.h"
 #include "lib/qrcodegen.h"
 #include <alloca.h>
@@ -152,11 +153,59 @@ static NOINLINE int tsec_key_readout(sdmmc_storage_t* mmc, void* outBuf)  //noin
     return retVal;
 }
 
-#define REMAINING_TEXT_BYTES(bufVar, bufPosVar) ((((int)sizeof(bufVar)-(int)bufPosVar-1) > 0) ? (sizeof(bufVar)-bufPosVar-1) : 0)
+static const u32 FRAMEBUFFER_LINE_WIDTH = 720;
+static const u32 FRAMEBUFFER_LINE_STRIDE = 768;
+
+static NOINLINE bool drawQrCode(u32* lfb_base, const char* textBuf, int qrCodeVertStart, u32 qrCodeBackgroundColor)
+{
+    u8 qrDataBuf[qrcodegen_BUFFER_LEN_FOR_VERSION(20)];
+    u8 qrTempBuf[qrcodegen_BUFFER_LEN_FOR_VERSION(20)];
+
+    if (qrcodegen_encodeText(textBuf, qrTempBuf, qrDataBuf, qrcodegen_Ecc_MEDIUM, 10, 20, qrcodegen_Mask_AUTO, true))
+    {
+        int qrCodeOrigSize = qrcodegen_getSize(qrDataBuf);
+        int qrCodeActualSize = qrCodeOrigSize << 2; //quadruple the size
+        int qrCodeBackgroundSize = (qrCodeActualSize*3)/2;
+
+        int qrCodeHorizStart = (FRAMEBUFFER_LINE_WIDTH>>1)-(qrCodeBackgroundSize>>1);
+        u32* frameBufferRowPtr = &lfb_base[qrCodeVertStart*FRAMEBUFFER_LINE_STRIDE+qrCodeHorizStart];
+        for (int y=0; y<qrCodeBackgroundSize; y++)
+        {
+            for (int x=0; x<qrCodeBackgroundSize; x++)
+                frameBufferRowPtr[x] = qrCodeBackgroundColor;
+
+            frameBufferRowPtr += FRAMEBUFFER_LINE_STRIDE;
+        }
+
+        qrCodeVertStart += (qrCodeBackgroundSize-qrCodeActualSize)/2;
+        qrCodeHorizStart = (FRAMEBUFFER_LINE_WIDTH>>1)-(qrCodeActualSize>>1);
+        u32* qrLineVideoData = alloca(qrCodeActualSize*sizeof(u32));
+        frameBufferRowPtr = &lfb_base[qrCodeVertStart*FRAMEBUFFER_LINE_STRIDE+qrCodeHorizStart];
+        for (int y=0; y<qrCodeOrigSize; y++)
+        {
+            u32* lineDataPtr = qrLineVideoData;
+            for (int x=0; x<qrCodeOrigSize; x++)
+            {
+                bool currBit = qrcodegen_getModule(qrDataBuf, x, y);
+                u32 pixelColor = currBit ? 0x00000000 : 0xFFFFFFFF;
+                for (u32 i=0; i<(qrCodeActualSize/qrCodeOrigSize); i++)
+                    *lineDataPtr++ = pixelColor;
+            }
+
+            for (u32 i=0; i<(qrCodeActualSize/qrCodeOrigSize); i++)
+            {
+                memcpy(frameBufferRowPtr, qrLineVideoData, qrCodeActualSize*sizeof(u32));
+                frameBufferRowPtr += FRAMEBUFFER_LINE_STRIDE;
+            }
+        }
+
+        return true;
+    }
+    return false;
+}
+
 int main(void) {
     char textBuf[1024];
-    u8 qrDataBuf[qrcodegen_BUFFER_LEN_FOR_VERSION(20)];
-    u8 qrTempBuf[4096-sizeof(qrDataBuf)-sizeof(textBuf)]; //larger than necessary to preserve nice alignments
     u32 tempBuf[0x20/sizeof(u32)];
     int currTextBufPos = 0;
     int lastLineLength = 0;
@@ -170,12 +219,17 @@ int main(void) {
     lfb_base = display_init_framebuffer();
     video_init(lfb_base);
 
+    //Tegra/Horizon configuration goes to 0x80000000+, package2 goes to 0xA9800000, we place our heap in between.
+	heap_init(0x90020000);
+
     printk("                                         biskeydump\n");
     printk("                                            v%d\n", XVERSION);
 
     /* Turn on the backlight after initializing the lfb */
     /* to avoid flickering. */
     display_enable_backlight(true);
+
+    #define REMAINING_TEXT_BYTES(bufVar, bufPosVar) ((((int)sizeof(bufVar)-(int)bufPosVar-1) > 0) ? (sizeof(bufVar)-bufPosVar-1) : 0)
 
     memset(tempBuf, 0, sizeof(tempBuf));
     fuse_get_hardware_info(tempBuf);
@@ -194,8 +248,9 @@ int main(void) {
     printk("SBK AESE 0 (test): %s\n", hexify_crypto_key(tempBuf, 0x10));
 
     sdmmc_storage_t mmcPart;
-    memset(&mmcPart,0,sizeof(mmcPart));
     sdmmc_t mmcDev;
+
+    memset(&mmcPart,0,sizeof(mmcPart));
     memset(&mmcDev,0,sizeof(mmcDev));
 
     int retVal = -13;
@@ -258,55 +313,15 @@ int main(void) {
 
     // credits
     printk("\n fusee gelee exploit by ktemkin (and others), hwinit by naehrwert, biskeydump by rajkosto\n");
+    sdmmc_storage_end(&mmcPart);
     mc_disable_ahb_redirect(); //no longer needed 
 
-    const u32 framebufferLineWidth = 720;
-    const u32 framebufferLineStride = 768;
-    
     const int smileySize = 128;
     const int smileyVertStart = 128*3;
-    const int smileyHorizStart = (framebufferLineWidth/2)-(smileySize/2);    
+    const int smileyHorizStart = (FRAMEBUFFER_LINE_WIDTH/2)-(smileySize/2);    
 
     int qrCodeVertStart = smileyVertStart + ((smileySize*3)/2);
-    if (qrcodegen_encodeText(textBuf, qrTempBuf, qrDataBuf, qrcodegen_Ecc_MEDIUM, 10, 20, qrcodegen_Mask_AUTO, true))
-    {
-        int qrCodeOrigSize = qrcodegen_getSize(qrDataBuf);
-        int qrCodeActualSize = qrCodeOrigSize << 2; //quadruple the size
-        int qrCodeBackgroundSize = (qrCodeActualSize*3)/2;
-        u32 qrCodeBackgroundColor = (retVal == 0) ? 0xAB7213u : 0xFFu; //bsod blue or very red
-
-        int qrCodeHorizStart = (framebufferLineWidth>>1)-(qrCodeBackgroundSize>>1);
-        u32* frameBufferRowPtr = &lfb_base[qrCodeVertStart*framebufferLineStride+qrCodeHorizStart];
-        for (int y=0; y<qrCodeBackgroundSize; y++)
-        {
-            for (int x=0; x<qrCodeBackgroundSize; x++)
-                frameBufferRowPtr[x] = qrCodeBackgroundColor;
-
-            frameBufferRowPtr += framebufferLineStride;
-        }
-
-        qrCodeVertStart += (qrCodeBackgroundSize-qrCodeActualSize)/2;
-        qrCodeHorizStart = (framebufferLineWidth>>1)-(qrCodeActualSize>>1);
-        u32* qrLineVideoData = alloca(qrCodeActualSize*sizeof(u32));
-        frameBufferRowPtr = &lfb_base[qrCodeVertStart*framebufferLineStride+qrCodeHorizStart];
-        for (int y=0; y<qrCodeOrigSize; y++)
-        {
-            u32* lineDataPtr = qrLineVideoData;
-            for (int x=0; x<qrCodeOrigSize; x++)
-            {
-                bool currBit = qrcodegen_getModule(qrDataBuf, x, y);
-                u32 pixelColor = currBit ? 0x00000000 : 0xFFFFFFFF;
-                for (u32 i=0; i<(qrCodeActualSize/qrCodeOrigSize); i++)
-                    *lineDataPtr++ = pixelColor;
-            }
-
-            for (u32 i=0; i<(qrCodeActualSize/qrCodeOrigSize); i++)
-            {
-                memcpy(frameBufferRowPtr, qrLineVideoData, qrCodeActualSize*sizeof(u32));
-                frameBufferRowPtr += framebufferLineStride;
-            }
-        }
-    }
+    drawQrCode(lfb_base, textBuf, qrCodeVertStart, (retVal == 0) ? 0xAB7213u : 0xFFu);
 
     const float incPixel = 1.0f/smileySize;
     const float timerToSeconds = 1.0f/1000000;
@@ -332,7 +347,7 @@ int main(void) {
             eyesVect = (vec2){0.0f,0.0f};	// fix bug with sudden eye move
         #endif
 
-        int rowIdx = smileyVertStart*framebufferLineStride;
+        int rowIdx = smileyVertStart*FRAMEBUFFER_LINE_STRIDE;
         vec2 uv = {0.0f, 0.5f};
         for (int y=0; y<smileySize; y++)
         {
@@ -343,7 +358,7 @@ int main(void) {
                 lfb_base[rowIdx+smileyHorizStart+x] = floats_to_pixel(currPixel.x, currPixel.y, currPixel.z);
                 uv.x += incPixel;
             }
-            rowIdx += framebufferLineStride;
+            rowIdx += FRAMEBUFFER_LINE_STRIDE;
             uv.y -= incPixel;
 
             // Check for power button press
