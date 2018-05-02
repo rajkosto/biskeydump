@@ -1,8 +1,23 @@
+/*
+* Copyright (c) 2018 naehrwert
+*
+* This program is free software; you can redistribute it and/or modify it
+* under the terms and conditions of the GNU General Public License,
+* version 2, as published by the Free Software Foundation.
+*
+* This program is distributed in the hope it will be useful, but WITHOUT
+* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+* FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+* more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #ifndef _DI_H_
 #define _DI_H_
 
 #include "types.h"
-#include <stdbool.h>
 
 /*! Display registers. */
 #define _DIREG(reg) ((reg) * 4)
@@ -52,9 +67,6 @@ void display_end();
 void display_color_screen(u32 color);
 
 /*! Init display in full 1280x720 resolution (32bpp, line stride 768, framebuffer size = 1280*768*4 bytes). */
-u32 *display_init_framebuffer(void);
-
-/*! Enable or disable the backlight. Should only be called when the screen is completely set up, to avoid flickering. */
-void display_enable_backlight(bool on);
+u32 *display_init_framebuffer();
 
 #endif

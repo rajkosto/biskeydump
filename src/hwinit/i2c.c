@@ -1,3 +1,19 @@
+/*
+* Copyright (c) 2018 naehrwert
+*
+* This program is free software; you can redistribute it and/or modify it
+* under the terms and conditions of the GNU General Public License,
+* version 2, as published by the Free Software Foundation.
+*
+* This program is distributed in the hope it will be useful, but WITHOUT
+* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+* FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+* more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #include <string.h>
 
 #include "i2c.h"
@@ -82,7 +98,7 @@ void i2c_init(u32 idx)
 	base[0x1A] = base[0x1A];
 }
 
-int i2c_send_buf_small(u32 idx, u32 x, u32 y, u8 *buf, u32 size)
+u32 i2c_send_buf_small(u32 idx, u32 x, u32 y, u8 *buf, u32 size)
 {
 	u8 tmp[4];
 
@@ -92,7 +108,7 @@ int i2c_send_buf_small(u32 idx, u32 x, u32 y, u8 *buf, u32 size)
 	tmp[0] = y;
 	memcpy(tmp + 1, buf, size);
 
-	return _i2c_send_pkt(idx, x, tmp, size + 1);
+	_i2c_send_pkt(idx, x, tmp, size + 1);
 }
 
 int i2c_recv_buf_small(u8 *buf, u32 size, u32 idx, u32 x, u32 y)
@@ -103,7 +119,7 @@ int i2c_recv_buf_small(u8 *buf, u32 size, u32 idx, u32 x, u32 y)
 	return res;
 }
 
-void i2c_send_byte(u32 idx, u32 x, u32 y, u8 b)
+u32 i2c_send_byte(u32 idx, u32 x, u32 y, u8 b)
 {
 	i2c_send_buf_small(idx, x, y, &b, 1);
 }

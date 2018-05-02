@@ -1,8 +1,25 @@
+/*
+* Copyright (c) 2018 naehrwert
+*
+* This program is free software; you can redistribute it and/or modify it
+* under the terms and conditions of the GNU General Public License,
+* version 2, as published by the Free Software Foundation.
+*
+* This program is distributed in the hope it will be useful, but WITHOUT
+* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+* FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+* more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #include "di.h"
 #include "t210.h"
 #include "util.h"
 #include "i2c.h"
 #include "pmc.h"
+#include "max77620.h"
 
 #include "di.inl"
 
@@ -19,8 +36,8 @@ static void _display_dsi_wait(u32 timeout, u32 off, u32 mask)
 void display_init()
 {
 	//Power on.
-	i2c_send_byte(I2C_5, 0x3C, 0x23, 0xD0);
-	i2c_send_byte(I2C_5, 0x3C, 0x3D, 0x09);
+	i2c_send_byte(I2C_5, 0x3C, MAX77620_REG_LDO0_CFG, 0xD0); //Configure to 1.2V.
+	i2c_send_byte(I2C_5, 0x3C, MAX77620_REG_GPIO7, 0x09);
 
 	//Enable MIPI CAL, DSI, DISP1, HOST1X, UART_FST_MIPI_CAL, DSIA LP clocks.
 	CLOCK(0x30C) = 0x1010000;
@@ -183,19 +200,14 @@ void display_color_screen(u32 color)
 	GPIO_6(0x24) = GPIO_6(0x24) & 0xFFFFFFFE | 1;
 }
 
-void display_enable_backlight(bool on) {
-	GPIO_6(0x24) = GPIO_6(0x24) & 0xFFFFFFFE | !!on;
-}
-
-
-u32 *display_init_framebuffer(void)
+u32 *display_init_framebuffer(u32 *fb)
 {
-	u32 *lfb_addr = (u32 *)0xC0000000;
-
 	//This configures the framebuffer @ 0xC0000000 with a resolution of 1280x720 (line stride 768).
 	exec_cfg((u32 *)DISPLAY_A_BASE, cfg_display_framebuffer, 32);
 
 	sleep(35000);
 
-	return lfb_addr;
+	GPIO_6(0x24) = GPIO_6(0x24) & 0xFFFFFFFE | 1;
+
+	return (u32 *)0xC0000000;
 }

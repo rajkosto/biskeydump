@@ -1,3 +1,19 @@
+/*
+* Copyright (c) 2018 naehrwert
+*
+* This program is free software; you can redistribute it and/or modify it
+* under the terms and conditions of the GNU General Public License,
+* version 2, as published by the Free Software Foundation.
+*
+* This program is distributed in the hope it will be useful, but WITHOUT
+* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+* FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+* more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #ifndef _UART_H_
 #define _UART_H_
 
@@ -19,20 +35,20 @@
 
 typedef struct _uart_t
 {
-	/* 0x00 */ u32 UART_THR_DLAB;
-	/* 0x04 */ u32 UART_IER_DLAB;
-	/* 0x08 */ u32 UART_IIR_FCR;
-	/* 0x0C */ u32 UART_LCR;
-	/* 0x10 */ u32 UART_MCR;
-	/* 0x14 */ u32 UART_LSR;
-	/* 0x18 */ u32 UART_MSR;
-	/* 0x1C */ u32 UART_SPR;
-	/* 0x20 */ u32 UART_IRDA_CSR;
-	/* 0x24 */ u32 UART_RX_FIFO_CFG;
-	/* 0x28 */ u32 UART_MIE;
-	/* 0x2C */ u32 UART_VENDOR_STATUS;
-	/* 0x30 */ u8 _pad_30[0x0C];
-	/* 0x3C */ u32 UART_ASR;
+	/* 0x00 */ vu32 UART_THR_DLAB;
+	/* 0x04 */ vu32 UART_IER_DLAB;
+	/* 0x08 */ vu32 UART_IIR_FCR;
+	/* 0x0C */ vu32 UART_LCR;
+	/* 0x10 */ vu32 UART_MCR;
+	/* 0x14 */ vu32 UART_LSR;
+	/* 0x18 */ vu32 UART_MSR;
+	/* 0x1C */ vu32 UART_SPR;
+	/* 0x20 */ vu32 UART_IRDA_CSR;
+	/* 0x24 */ vu32 UART_RX_FIFO_CFG;
+	/* 0x28 */ vu32 UART_MIE;
+	/* 0x2C */ vu32 UART_VENDOR_STATUS;
+	/* 0x30 */ u8 _pad_30[0xC];
+	/* 0x3C */ vu32 UART_ASR;
 } uart_t;
 
 void uart_init(u32 idx, u32 baud);

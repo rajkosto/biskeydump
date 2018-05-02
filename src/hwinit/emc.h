@@ -22,6 +22,8 @@
 #ifndef _EMC_H_
 #define _EMC_H_
 
+#define EMC_DBG                                                 0x8
+#define EMC_CFG                                                 0xC
 #define EMC_CONFIG_SAMPLE_DELAY                                 0x5f0
 #define EMC_CFG_UPDATE                                          0x5f4
 #define EMC_ADR_CFG                                             0x10
