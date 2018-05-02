@@ -1,5 +1,5 @@
 # biskeydump ![License](https://img.shields.io/badge/License-GPLv2-blue.svg)
-Dumps all your Switch BIS keys for eMMC contents decryption, to be used with fusÃ©e gelÃ©e.
+Dumps all your Switch BIS keys for eMMC contents decryption, to be used with fusée gelée (the bootrom RCM exploit)
 
 With all your BIS keys and your RawNand.bin (or the physical eMMC attached via microSD reader or using a mass storage gadget mode in u-boot/linux) you can explore/modify your eMMC partitions using my HacDiskMount tool (if running Windows) from https://switchtools.sshnuke.net
 
@@ -10,16 +10,15 @@ With all your BIS keys and your RawNand.bin (or the physical eMMC attached via m
 
 ## Changes
 
-This section is required by the original license of Atmosphere, GPLv2.
+This section is required by the GPLv2 license
 
- * This originates from https://github.com/Atmosphere-NX/Atmosphere
- * everything except fusee-primary and key_derivation/masterkey/exocfg from fusee-secondary has been removed
- * tsec.c has been slightly modified (to not try and copy fw from static array)
- * sdmmc.c has been modified to have simple switch to boot0 function and only output debug info under an ifdef (default disabled)
- * miniz (from https://github.com/richgel999/miniz) has been included to facilitate crc32 used in tsec.c
+ * initial code based on https://github.com/Atmosphere-NX/Atmosphere
+ * everything except fusee-primary and key_derivation/masterkey/exocfg from fusee-secondary has been removed (from Atmosphere)
+ * all hwinit code has been replaced by the updated versions from https://github.com/nwert/hekate
+ * tsec.c has been slightly modified (to just use the passed-in address directly as DMA source, instead of copying to a temporary buffer)
  * qrcodegen (from https://github.com/nayuki/QR-Code-generator) has been included so that a QR code image of the dumped data can be displayed
  * main.c has been modified to get tsec fw, query for tsec key then call key_derivation.c functions using that key, then dump device and bis keys
- * key_derivation.c has been modified to use passed-in tsec key and not use any keyblob data (via #ifdef guards)
+ * key_derivation.c has been modified to use passed-in tsec key and not do any masterkey derivation
 
 ## Responsibility
 

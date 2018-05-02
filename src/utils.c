@@ -2,31 +2,31 @@
 #include "utils.h"
 #include "se.h"
 #include "fuse.h"
-#include "pmc.h"
+#include "hwinit/t210.h"
+#include "hwinit/pmc.h"
 #include "panic_color.h"
-#include "timers.h"
 
 #include "hwinit/btn.h"
 
 __attribute__ ((noreturn)) void panic(uint32_t code) {
     /* Set Panic Code for NX_BOOTLOADER. */
-    if (APBDEV_PMC_SCRATCH200_0 == 0) {
-        APBDEV_PMC_SCRATCH200_0 = code;
+    if (PMC(APBDEV_PMC_SCRATCH200) == 0) {
+        PMC(APBDEV_PMC_SCRATCH200) = code;
     }
 
     /* TODO: Custom Panic Driver, which displays to screen without rebooting. */
     /* For now, just use NX BOOTLOADER's panic. */
     fuse_disable_programming();
-    APBDEV_PMC_CRYPTO_OP_0 = 1; /* Disable all SE operations. */
+    PMC(APBDEV_PMC_CRYPTO_OP) = 1; /* Disable all SE operations. */
 
     /* FIXME: clean up and use this instead of replacing things */
     while(btn_read() != BTN_POWER);
     
     /* Ensure we boot back into RCM, for development. */
-    APBDEV_PMC_SCRATCH0_0 = (1 << 1);
+    PMC(APBDEV_PMC_SCRATCH0) = (1 << 1);
 
     /* Reset the processor. */
-    APBDEV_PMC_CONTROL = (1 << 4);
+    PMC(0) = (1 << 4);
     while(1);
 }
 

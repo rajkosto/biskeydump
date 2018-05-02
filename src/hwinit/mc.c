@@ -129,8 +129,8 @@ void mc_enable()
 	CLOCK(CLK_RST_CONTROLLER_RST_DEV_H_SET) = 0x2000001; //Clear EMC and MC reset.
 	sleep(5);
 
-	//#ifdef CONFIG_ENABLE_AHB_REDIRECT
 	mc_disable_ahb_redirect();
-	//mc_enable_ahb_redirect();
-	//#endif
+	#ifdef CONFIG_ENABLE_AHB_REDIRECT
+	mc_enable_ahb_redirect();
+	#endif
 }

@@ -1,18 +1,22 @@
 #include "utils.h"
-#include "hwinit.h"
 #include "lib/printk.h"
 #include "display/video_fb.h"
 
-#include "fuse.h"
-#include "se.h"
 #include "hwinit/btn.h"
 #include "hwinit/i2c.h"
+#include "hwinit/tsec.h"
+#include "hwinit/hwinit.h"
+#include "hwinit/di.h"
+#include "hwinit/mc.h"
 #include "hwinit/t210.h"
-#include "sdmmc.h"
-#include "lib/miniz.h"
+#include "hwinit/sdmmc.h"
+#include "hwinit/sdmmc_driver.h"
+#include "fuse.h"
+#include "se.h"
 #include "key_derivation.h"
 #include "exocfg.h"
 #include "smiley.h"
+#include "lib/crc32.h"
 #include "lib/qrcodegen.h"
 #include <alloca.h>
 #define XVERSION 5
@@ -48,7 +52,7 @@ static NOINLINE const char* hexify_crypto_key(const void* dataBuf, size_t keySiz
     return tempBuf;
 }
 
-static NOINLINE int tsec_key_readout(struct mmc* mmc, void* outBuf)  //noinline so we get the stack space back
+static NOINLINE int tsec_key_readout(sdmmc_storage_t* mmc, void* outBuf)  //noinline so we get the stack space back
 {
     u8 carveoutData[0x1000];
     u32 carveoutCurrIdx = 0;
@@ -89,10 +93,9 @@ static NOINLINE int tsec_key_readout(struct mmc* mmc, void* outBuf)  //noinline 
 #ifdef SDMMC_DEBUGGING
         printk("SDMMC: Reading bytes 0x%08x-0x%08x\n", currentSectorIdx*SECTOR_SIZE, (currentSectorIdx+numSectorsToRead)*SECTOR_SIZE);
 #endif
-        int sdMmcRetVal = sdmmc_read(mmc, readPtr, currentSectorIdx, numSectorsToRead);
-        if (sdMmcRetVal != 0)
+        if (!sdmmc_storage_read(mmc, currentSectorIdx, numSectorsToRead, readPtr))
         {
-            printk("SDMMC ERROR Reading bytes 0x%08x-0x%08x: %d\n", sdMmcRetVal, currentSectorIdx*SECTOR_SIZE, (currentSectorIdx+numSectorsToRead)*SECTOR_SIZE);
+            printk("SDMMC ERROR Reading bytes 0x%08x-0x%08x\n", currentSectorIdx*SECTOR_SIZE, (currentSectorIdx+numSectorsToRead)*SECTOR_SIZE);
             break;
         }
         totalSectorsRead += numSectorsToRead;
@@ -138,7 +141,7 @@ static NOINLINE int tsec_key_readout(struct mmc* mmc, void* outBuf)  //noinline 
     u32 carveoutSize = (u32)carveoutData+sizeof(carveoutData)-(u32)carveoutBytes;
     memmove(carveoutBytes, carveoutData, carveoutSize);
     {
-        u32 theCrc = mz_crc32(MZ_CRC32_INIT, carveoutBytes, TSECFW_SIZE);
+        u32 theCrc = crc32b(carveoutBytes, TSECFW_SIZE);
         bool crcCorrect = (theCrc == 0xB035021F);
         printk("TSEC FW CRC32: %08x - %s\n", theCrc, crcCorrect ? "CORRECT" : "INCORRECT");
         if (!crcCorrect)
@@ -163,7 +166,8 @@ int main(void) {
     int lastLineLength = 0;
     u32* lfb_base;    
 
-    nx_hwinit();
+    config_hw();
+    display_enable_backlight(false);
     display_init();
 
     // Set up the display, and register it as a printk provider.
@@ -193,17 +197,19 @@ int main(void) {
     se_aes_128_ecb_encrypt_block(KEYSLOT_SWITCH_SBK, (u8*)(tempBuf)+0, sizeof(tempBuf)/2, (u8*)(tempBuf)+sizeof(tempBuf)/2, sizeof(tempBuf)/2);
     printk("SBK AESE 0 (test): %s\n", hexify_crypto_key(tempBuf, 0x10));
 
-    struct mmc mmcPart;
+    sdmmc_storage_t mmcPart;
     memset(&mmcPart,0,sizeof(mmcPart));
+    sdmmc_t mmcDev;
+    memset(&mmcDev,0,sizeof(mmcDev));
+
+    int retVal = -13;
     mc_enable_ahb_redirect(); //needed for sdmmc as well
-    int retVal = sdmmc_init(&mmcPart, SWITCH_EMMC);
-    if (retVal != 0)
-        printk("ERROR %d initializing SDMMC!\n", retVal);
+    if (!sdmmc_storage_init_mmc(&mmcPart, &mmcDev, SDMMC_4, SDMMC_BUS_WIDTH_8, 4))
+        printk("ERROR initializing SDMMC!\n");
     else
     {
-        retVal = sdmmc_switch_part(&mmcPart, 1);
-        if (retVal != 0)
-            printk("ERROR %d switching to boot0 partition!\n", retVal);
+        if (!sdmmc_storage_set_mmc_partition(&mmcPart, 1))
+            printk("ERROR switching to boot0 partition!\n");
         else
         {
             memset(tempBuf, 0, sizeof(tempBuf));
@@ -255,7 +261,7 @@ int main(void) {
         printk("ERROR getting TSEC key (retVal %d), cannot continue\n", retVal);
 
     // credits
-    printk("\n                       fusee gelee by ktemkin, biskeydump by rajkosto\n");
+    printk("\n fusee gelee exploit by ktemkin (and others), hwinit by naehrwert, biskeydump by rajkosto\n");
     mc_disable_ahb_redirect(); //no longer needed 
 
     const u32 framebufferLineWidth = 720;

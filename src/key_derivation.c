@@ -3,7 +3,6 @@
 #include "se.h"
 #include "exocfg.h"
 #include "fuse.h"
-#include "sdmmc.h"
 #include "lib/printk.h"
 
 static const u8 keyblob_seeds[MASTERKEY_REVISION_MAX][0x10] =
@@ -40,7 +39,7 @@ static const uint8_t masterkey_4x_seed[0x10] =
     0x2D, 0xC1, 0xF4, 0x8D, 0xF3, 0x5B, 0x69, 0x33, 0x42, 0x10, 0xAC, 0x65, 0xDA, 0x90, 0x46, 0x66
 };
 
-static int get_keyblob(mmc_t* mmcPart, void *dst, u32 revision) {
+static int get_keyblob(sdmmc_storage_t* mmcStorage, void *dst, u32 revision) {
     if (revision >= 0x20) {
         generic_panic();
     }
@@ -53,11 +52,10 @@ static int get_keyblob(mmc_t* mmcPart, void *dst, u32 revision) {
     memset(keyblobReadData, 0, sizeof(keyblobReadData));
 
     u32 wantedKeyblobOffset = BOOT0_KEYBLOBS_START + (revision*KEYBLOB_DATA_SIZE);
-    int rc = sdmmc_read(mmcPart, keyblobReadData, wantedKeyblobOffset/SECTOR_SIZE, KEYBLOB_DATA_SIZE/SECTOR_SIZE);
-    if (rc != 0)
+    if (!sdmmc_storage_read(mmcStorage, wantedKeyblobOffset/SECTOR_SIZE, KEYBLOB_DATA_SIZE/SECTOR_SIZE, keyblobReadData))
     {
-        printk("Error %d reading keyblob data (of size 0x%04x) from offset 0x%08x of eMMC boot!", rc, KEYBLOB_DATA_SIZE, wantedKeyblobOffset);
-        return rc;
+        printk("Error reading keyblob data (of size 0x%04x) from offset 0x%08x of eMMC boot!", KEYBLOB_DATA_SIZE, wantedKeyblobOffset);
+        return -13;
     }
 
     memcpy(dst, keyblobReadData, sizeof(nx_keyblob_t));
@@ -73,7 +71,7 @@ bool safe_memcmp(u8 *a, u8 *b, u32 sz) {
 }
 
 /* Derive all Switch keys. */
-int derive_nx_keydata(mmc_t* mmcPart, u32 target_firmware) {
+int derive_nx_keydata(sdmmc_storage_t* mmcStorage, u32 target_firmware) {
     u8 work_buffer[0x10];
     nx_keyblob_t keyblob;
     
@@ -87,9 +85,9 @@ int derive_nx_keydata(mmc_t* mmcPart, u32 target_firmware) {
     
     /* Get keyblob, always try to set up the highest possible master key. */
     /* TODO: Should we iterate, trying lower keys on failure? */
-    int rc = get_keyblob(mmcPart, &keyblob, MASTERKEY_REVISION_500_CURRENT);
+    int rc = get_keyblob(mmcStorage, &keyblob, MASTERKEY_REVISION_500_CURRENT);
     if (rc != 0)
-        return -13;
+        return rc;
     
     /* Derive both keyblob key 1, and keyblob key latest. */
     se_aes_ecb_decrypt_block(0xD, work_buffer, 0x10, keyblob_seeds[MASTERKEY_REVISION_100_230], 0x10); //decrypt keyblob_seed into work_buffer using TSEC key

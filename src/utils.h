@@ -15,7 +15,7 @@
 
 #define MAKE_REG32(a)   (*(volatile uint32_t *)(a))
 
-#define ALIGN(m)        __attribute__((aligned(m)))
+#define ALIGNED(m)      __attribute__((aligned(m)))
 #define PACKED          __attribute__((packed))
 
 #define ALINLINE        __attribute__((always_inline))

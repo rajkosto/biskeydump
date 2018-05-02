@@ -1,7 +1,7 @@
 #ifndef FUSEE_KEYDERIVATION_H
 #define FUSEE_KEYDERIVATION_H
 
-#include "hwinit/tsec.h"
+#include "hwinit/sdmmc.h"
 
 /* TODO: Update to 0x6 on release of new master key. */
 #define MASTERKEY_REVISION_MAX 0x5
@@ -29,8 +29,7 @@ typedef struct {
     };
 } nx_keyblob_t;
 
-typedef struct mmc mmc_t;
-int derive_nx_keydata(mmc_t* mmcPart, u32 target_firmware);
+int derive_nx_keydata(sdmmc_storage_t* mmcStorage, u32 target_firmware);
 void finalize_nx_keydata(u32 target_firmware);
 
 void derive_bis_key(void *dst, BisPartition_t partition_id, u32 target_firmware);

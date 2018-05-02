@@ -190,7 +190,7 @@ void decrypt_data_into_keyslot(unsigned int keyslot_dst, unsigned int keyslot_sr
 }
 
 void se_synchronous_exp_mod(unsigned int keyslot, void *dst, size_t dst_size, const void *src, size_t src_size) {
-    uint8_t ALIGN(16) stack_buf[KEYSIZE_RSA_MAX];
+    uint8_t ALIGNED(16) stack_buf[KEYSIZE_RSA_MAX];
 
     if (keyslot >= KEYSLOT_RSA_MAX || src_size > KEYSIZE_RSA_MAX || dst_size > KEYSIZE_RSA_MAX) {
         generic_panic();
@@ -486,7 +486,7 @@ void se_compute_aes_cmac(unsigned int keyslot, void *cmac, size_t cmac_size, con
     }
 
     /* Generate the derived key, to be XOR'd with final output block. */
-    uint8_t ALIGN(16) derived_key[0x10] = {0};
+    uint8_t ALIGNED(16) derived_key[0x10] = {0};
     se_aes_ecb_encrypt_block(keyslot, derived_key, sizeof(derived_key), derived_key, sizeof(derived_key), config_high);
     shift_left_xor_rb(derived_key);
     if (data_size & 0xF) {
@@ -507,7 +507,7 @@ void se_compute_aes_cmac(unsigned int keyslot, void *cmac, size_t cmac_size, con
     }
 
     /* Create final block. */
-    uint8_t ALIGN(16) last_block[0x10] = {0};
+    uint8_t ALIGNED(16) last_block[0x10] = {0};
     if (data_size & 0xF) {
         memcpy(last_block, data + (data_size & ~0xF), data_size & 0xF);
         last_block[data_size & 0xF] = 0x80; /* Last block = data || 100...0 */
@@ -579,7 +579,7 @@ void se_initialize_rng(unsigned int keyslot) {
 
     /* To initialize the RNG, we'll perform an RNG operation into an output buffer. */
     /* This will be discarded, when done. */
-    uint8_t ALIGN(16) output_buf[0x10];
+    uint8_t ALIGNED(16) output_buf[0x10];
 
     SECURITY_ENGINE->RNG_SRC_CONFIG_REG = 3; /* Entropy enable + Entropy lock enable */
     SECURITY_ENGINE->RNG_RESEED_INTERVAL_REG = 70001;

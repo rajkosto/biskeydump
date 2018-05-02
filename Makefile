@@ -27,12 +27,9 @@ CFLAGS = \
 	-fno-strict-aliasing \
 	-fstrict-volatile-bitfields \
 	-std=gnu11 \
-	-Wall \
-	-DMINIZ_NO_ARCHIVE_WRITING_APIS \
-	-DMINIZ_NO_ZLIB_APIS \
-	-DMINIZ_NO_ARCHIVE_APIS \
-	-DMINIZ_NO_TIME \
-	-DMINIZ_NO_STDIO 
+	-I$(dir_source) \
+	-DNDEBUG \
+	-Wall 
 
 LDFLAGS = -specs=linker.specs -g $(ARCH)
 
