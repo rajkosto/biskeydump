@@ -46,7 +46,7 @@ static int _i2c_send_pkt(u32 idx, u32 x, u8 *buf, u32 size)
 	base[0] = (2 * size - 2) | 0x2800; //Set size and send mode.
 	_i2c_wait(base); //Kick transaction.
 
-	base[0] = base[0] & 0xFFFFFDFF | 0x200;
+	base[0] = (base[0] & 0xFFFFFDFF) | 0x200;
 	while (base[7] & 0x100)
 		;
 
@@ -66,7 +66,7 @@ static int _i2c_recv_pkt(u32 idx, u8 *buf, u32 size, u32 x)
 	base[0] = (2 * size - 2) | 0x2840; //Set size and recv mode.
 	_i2c_wait(base); //Kick transaction.
 
-	base[0] = base[0] & 0xFFFFFDFF | 0x200;
+	base[0] = (base[0] & 0xFFFFFDFF) | 0x200;
 	while (base[7] & 0x100)
 		;
 
@@ -94,7 +94,7 @@ void i2c_init(u32 idx)
 			break;
 	}
 
-	vu32 dummy = base[0x22];
+	(void)base[0x22];
 	base[0x1A] = base[0x1A];
 }
 
@@ -108,7 +108,7 @@ u32 i2c_send_buf_small(u32 idx, u32 x, u32 y, u8 *buf, u32 size)
 	tmp[0] = y;
 	memcpy(tmp + 1, buf, size);
 
-	_i2c_send_pkt(idx, x, tmp, size + 1);
+	return _i2c_send_pkt(idx, x, tmp, size + 1);
 }
 
 int i2c_recv_buf_small(u8 *buf, u32 size, u32 idx, u32 x, u32 y)
@@ -121,7 +121,7 @@ int i2c_recv_buf_small(u8 *buf, u32 size, u32 idx, u32 x, u32 y)
 
 u32 i2c_send_byte(u32 idx, u32 x, u32 y, u8 b)
 {
-	i2c_send_buf_small(idx, x, y, &b, 1);
+	return i2c_send_buf_small(idx, x, y, &b, 1);
 }
 
 u8 i2c_recv_byte(u32 idx, u32 x, u32 y)

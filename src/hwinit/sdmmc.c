@@ -19,13 +19,14 @@
 #include "mmc.h"
 #include "sd.h"
 #include "util.h"
-#include "heap.h"
+#include "lib/heap.h"
 
-/*#include "gfx.h"
-extern gfx_ctxt_t gfx_ctxt;
-extern gfx_con_t gfx_con;
-#define DPRINTF(...) gfx_printf(&gfx_con, __VA_ARGS__)*/
+#ifdef SDMMC_DEBUGGING
+#include "lib/printk.h"
+#define DPRINTF(...) printk(__VA_ARGS__)
+#else
 #define DPRINTF(...)
+#endif
 
 static inline u32 unstuff_bits(u32 *resp, u32 start, u32 size)
 {
@@ -174,6 +175,7 @@ static int _sdmmc_storage_readwrite(sdmmc_storage_t *storage, u32 sector, u32 nu
 		num_sectors -= blkcnt;
 		bbuf += 512 * blkcnt;
 	}
+	return 1;
 }
 
 int sdmmc_storage_read(sdmmc_storage_t *storage, u32 sector, u32 num_sectors, void *buf)
@@ -350,9 +352,8 @@ static int _mmc_storage_enable_highspeed(sdmmc_storage_t *storage, u32 card_type
 		return _mmc_storage_enable_HS400(storage);
 
 	if (sdmmc_get_bus_width(storage->sdmmc) == SDMMC_BUS_WIDTH_8 ||
-		sdmmc_get_bus_width(storage->sdmmc) == SDMMC_BUS_WIDTH_4
-		&& card_type & EXT_CSD_CARD_TYPE_HS200_1_8V
-		&& (type == 4 || type == 3))
+		(sdmmc_get_bus_width(storage->sdmmc) == SDMMC_BUS_WIDTH_4 &&
+		(card_type & EXT_CSD_CARD_TYPE_HS200_1_8V) && (type == 4 || type == 3)))
 		return _mmc_storage_enable_HS200(storage);
 
 out:;
@@ -498,7 +499,7 @@ static int _sd_storage_send_if_cond(sdmmc_storage_t *storage)
 static int _sd_storage_get_op_cond_once(sdmmc_storage_t *storage, u32 *cond, int is_version_1, int supports_low_voltage)
 {
 	sdmmc_cmd_t cmdbuf;
-	u32 arg = (((~is_version_1 & 1) << 28) & 0xBFFFFFFF | ((~is_version_1 & 1) << 30)) & 0xFEFFFFFF | ((supports_low_voltage & ~is_version_1 & 1) << 24) | 0x100000;
+	u32 arg = ((((~is_version_1 & 1) << 28) & 0xBFFFFFFF) | ((((~is_version_1 & 1) << 30)) & 0xFEFFFFFF)) | ((supports_low_voltage & ~is_version_1 & 1) << 24) | 0x100000;
 	sdmmc_init_cmd(&cmdbuf, SD_APP_OP_COND, arg, SDMMC_RSP_TYPE_3, 0);
 	if (!_sd_storage_execute_app_cmd(storage, 0x10, is_version_1 ? 0x400000 : 0, &cmdbuf, 0, 0))
 		return 0;
@@ -645,12 +646,12 @@ int _sd_storage_enable_highspeed(sdmmc_storage_t *storage, u32 hs_type, u8 *buf)
 	if (type_out != hs_type)
 		return 0;
 
-	if (((u16)buf[0] << 8) | buf[1] < 0x320)
+	if ((((u16)buf[0] << 8) | buf[1]) < 0x320)
 	{
 		if (!_sd_storage_switch(storage, buf, 1, hs_type))
 			return 0;
 
-		if (type_out != buf[16] & 0xF)
+		if (type_out != (buf[16] & 0xF))
 			return 0;
 	}
 
@@ -815,7 +816,7 @@ int sdmmc_storage_init_sd(sdmmc_storage_t *storage, sdmmc_t *sdmmc, u32 id, u32 
 		}
 		DPRINTF("[sd] enabled highspeed (low voltage)\n");
 	}
-	else if (type != 6 && storage->scr[0] & 0xF != 0)
+	else if (type != 6 && (storage->scr[0] & 0xF) != 0)
 	{
 		if (!_sd_storage_enable_highspeed_high_volt(storage, buf))
 		{

@@ -60,19 +60,19 @@ void display_init()
 	PINMUX_AUX(0x200) &= 0xFFFFFFEF;
 	PINMUX_AUX(0x204) &= 0xFFFFFFEF;
 
-	GPIO_3(0x00) = GPIO_3(0x00) & 0xFFFFFFFC | 0x3;
-	GPIO_3(0x10) = GPIO_3(0x10) & 0xFFFFFFFC | 0x3;
-	GPIO_3(0x20) = GPIO_3(0x20) & 0xFFFFFFFE | 0x1;
+	GPIO_3(0x00) = (GPIO_3(0x00) & 0xFFFFFFFC) | 0x3;
+	GPIO_3(0x10) = (GPIO_3(0x10) & 0xFFFFFFFC) | 0x3;
+	GPIO_3(0x20) = (GPIO_3(0x20) & 0xFFFFFFFE) | 0x1;
 
 	sleep(10000u);
 
-	GPIO_3(0x20) = GPIO_3(0x20) & 0xFFFFFFFD | 0x2;
+	GPIO_3(0x20) = (GPIO_3(0x20) & 0xFFFFFFFD) | 0x2;
 
 	sleep(10000);
 
-	GPIO_6(0x04) = GPIO_6(0x04) & 0xFFFFFFF8 | 0x7;
-	GPIO_6(0x14) = GPIO_6(0x14) & 0xFFFFFFF8 | 0x7;
-	GPIO_6(0x24) = GPIO_6(0x24) & 0xFFFFFFFD | 0x2;
+	GPIO_6(0x04) = (GPIO_6(0x04) & 0xFFFFFFF8) | 0x7;
+	GPIO_6(0x14) = (GPIO_6(0x14) & 0xFFFFFFF8) | 0x7;
+	GPIO_6(0x24) = (GPIO_6(0x24) & 0xFFFFFFFD) | 0x2;
 
 	//Config display interface and display.
 	MIPI_CAL(0x60) = 0;
@@ -83,7 +83,7 @@ void display_init()
 
 	sleep(10000);
 
-	GPIO_6(0x24) = GPIO_6(0x24) & 0xFFFFFFFB | 0x4;
+	GPIO_6(0x24) = (GPIO_6(0x24) & 0xFFFFFFFB) | 0x4;
 
 	sleep(60000);
 
@@ -180,7 +180,7 @@ void display_end()
 
 	GPIO_6(0x04) &= 0xFFFFFFFE;
 
-	PINMUX_AUX(0x1FC) = PINMUX_AUX(0x1FC) & 0xFFFFFFEF | 0x10;
+	PINMUX_AUX(0x1FC) = (PINMUX_AUX(0x1FC) & 0xFFFFFFEF) | 0x10;
 	PINMUX_AUX(0x1FC) = (PINMUX_AUX(0x1FC) >> 2) << 2 | 1;
 }
 
@@ -193,11 +193,11 @@ void display_color_screen(u32 color)
 	DISPLAY_A(_DIREG(DC_WIN_BD_WIN_OPTIONS)) = 0;
 	DISPLAY_A(_DIREG(DC_WIN_CD_WIN_OPTIONS)) = 0;
 	DISPLAY_A(_DIREG(DC_DISP_BLEND_BACKGROUND_COLOR)) = color;
-	DISPLAY_A(_DIREG(DC_CMD_STATE_CONTROL)) = DISPLAY_A(_DIREG(DC_CMD_STATE_CONTROL)) & 0xFFFFFFFE | 1;
+	DISPLAY_A(_DIREG(DC_CMD_STATE_CONTROL)) = (DISPLAY_A(_DIREG(DC_CMD_STATE_CONTROL)) & 0xFFFFFFFE) | 1;
 
 	sleep(35000);
 
-	GPIO_6(0x24) = GPIO_6(0x24) & 0xFFFFFFFE | 1;
+	GPIO_6(0x24) = (GPIO_6(0x24) & 0xFFFFFFFE) | 1;
 }
 
 u32 *display_init_framebuffer(u32 *fb)
@@ -207,7 +207,12 @@ u32 *display_init_framebuffer(u32 *fb)
 
 	sleep(35000);
 
-	GPIO_6(0x24) = GPIO_6(0x24) & 0xFFFFFFFE | 1;
+	GPIO_6(0x24) = (GPIO_6(0x24) & 0xFFFFFFFE) | 1;
 
 	return (u32 *)0xC0000000;
+}
+
+void display_enable_backlight(u32 on) 
+{
+	GPIO_6(0x24) = (GPIO_6(0x24) & 0xFFFFFFFE) | (!!on);
 }
