@@ -75,10 +75,6 @@ static NOINLINE int tsec_key_readout(sdmmc_storage_t* mmc, void* outBuf)  //noin
         if (numSectorsToRead > BUFFER_SIZE_IN_SECTORS)
             numSectorsToRead = BUFFER_SIZE_IN_SECTORS;
 
-        static const u32 MAX_SECTORS_PER_READ = 4;
-        if (numSectorsToRead > MAX_SECTORS_PER_READ)
-            numSectorsToRead = MAX_SECTORS_PER_READ;
-
         u8* readPtr = carveoutData;
         if (tsecFoundAt != 0)
         {
