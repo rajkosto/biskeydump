@@ -7,6 +7,8 @@ With all your BIS keys and your RawNand.bin (or the physical eMMC attached via m
  1. Build `biskeydump.bin` using make from the repository root directory, or download a binary release from https://switchtools.sshnuke.net
  2. Send the biskeydump.bin to your Switch running in RCM mode via a fusee-launcher (sudo ./fusee-launcher.py biskeydump.bin or just drag and drop it onto TegraRcmSmash.exe on Windows)
  3. Either read out and note down the text printed on your Switch's screen, or scan the generated QR code with your phone to have a copy of all your device-specific keys
+ 4. Alternatively, use TegraRcmSmash 1.1.0 or newer with a dummy argument so it keeps listening for usb comms, and you will get all the keys inside the console window, sample cmdline:
+    **TegraRcmSmash.exe -w out/biskeydump.bin BOOT:0x0**
 
 ## Changes
 

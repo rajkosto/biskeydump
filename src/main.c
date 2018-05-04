@@ -19,8 +19,9 @@
 #include "lib/heap.h"
 #include "lib/crc32.h"
 #include "lib/qrcodegen.h"
+#include "rcm_usb.h"
 #include <alloca.h>
-#define XVERSION 5
+#define XVERSION 6
 
 static void shutdown_using_pmic()
 {
@@ -322,6 +323,13 @@ int main(void) {
 
     int qrCodeVertStart = smileyVertStart + ((smileySize*3)/2);
     drawQrCode(lfb_base, textBuf, qrCodeVertStart, (retVal == 0) ? 0xAB7213u : 0xFFu);
+
+	//output to usb RCM host if it's listening
+    if (rcm_usb_device_ready())
+    {
+        rcm_usb_device_write_ep1_in_sync((u8*)textBuf, currTextBufPos, NULL);
+        rcm_usb_device_reset_ep1();
+    }
 
     const float incPixel = 1.0f/smileySize;
     const float timerToSeconds = 1.0f/1000000;

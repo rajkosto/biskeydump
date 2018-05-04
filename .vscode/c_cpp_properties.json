@@ -4,7 +4,7 @@
             "name": "ARM",
             "intelliSenseMode": "clang-x64",
             "includePath": [ "${workspaceFolder}/src" ],
-            "defines": [ "MINIZ_NO_ARCHIVE_WRITING_APIS", "MINIZ_NO_ZLIB_APIS", "MINIZ_NO_ARCHIVE_APIS", "MINIZ_NO_TIME", "MINIZ_NO_STDIO" ],
+            "defines": [ "NDEBUG" ],
             "compilerPath": "\"${DEVKITARM}/bin/arm-none-eabi-gcc${EXECUTABLE_SUFFIX}\" -march=armv4t -mtune=arm7tdmi -mthumb -mthumb-interwork",
             "cStandard": "c11",
             "cppStandard": "c++17",
