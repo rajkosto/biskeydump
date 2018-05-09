@@ -22,9 +22,7 @@
 #define UART_A 0
 #define UART_B 1
 #define UART_C 2
-//TODO: define clock inits for those.
-/*#define UART_D 3
-#define UART_E 4*/
+#define UART_D 3
 
 #define BAUD_115200 115200
 
@@ -54,6 +52,8 @@ typedef struct _uart_t
 void uart_init(u32 idx, u32 baud);
 void uart_wait_idle(u32 idx, u32 which);
 void uart_send(u32 idx, u8 *buf, u32 len);
-void uart_recv(u32 idx, u8 *buf, u32 len);
+void uart_print(u32 idx, const char* buf, u32 len);
+u32 uart_has_bytes(u32 idx);
+u8 uart_recv(u32 idx);
 
 #endif

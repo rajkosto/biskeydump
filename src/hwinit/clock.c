@@ -20,10 +20,10 @@
 #include "sdmmc.h"
 
 static const clock_t _clock_uart[] =  {
-	/* UART A */ { 4, 0x10, 0x178, 6, 0, 0 },
-	/* UART B */ { 4, 0x10, 0x17C, 7, 0, 0 },
-	/* UART C */ { 8, 0x14, 0x1A0, 0x17, 0, 0 },
-	/* UART D */ { 0 },
+	/* UART A */ { 0x4, 0x10, 0x178, 6, 0, 0 },
+	/* UART B */ { 0x4, 0x10, 0x17C, 7, 0, 0 },
+	/* UART C */ { 0x8, 0x14, 0x1A0, 23, 0, 0 },
+	/* UART D */ { 0xC, 0x18, 0x1C0, 1, 0, 0 },
 	/* UART E */ { 0 }
 };
 
@@ -32,8 +32,7 @@ static const clock_t _clock_i2c[] = {
 	/* I2C2 */ { 0 },
 	/* I2C3 */ { 0 },
 	/* I2C4 */ { 0 },
-	/* I2C5 */ { 8, 0x14, 0x128, 0xF, 6, 0 },
-	/* I2C6 */ { 0 }
+	/* I2C5 */ { 8, 0x14, 0x128, 0xF, 6, 0 }
 };
 
 static clock_t _clock_se = { 0x358, 0x360, 0x42C, 0x1F, 0, 0 };

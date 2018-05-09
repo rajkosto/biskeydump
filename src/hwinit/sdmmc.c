@@ -19,11 +19,10 @@
 #include "mmc.h"
 #include "sd.h"
 #include "util.h"
-#include "lib/heap.h"
 
 #ifdef SDMMC_DEBUGGING
 #include "lib/printk.h"
-#define DPRINTF(...) printk(__VA_ARGS__)
+#define DPRINTF(...) dbg_print(__VA_ARGS__)
 #else
 #define DPRINTF(...)
 #endif
@@ -425,29 +424,34 @@ int sdmmc_storage_init_mmc(sdmmc_storage_t *storage, sdmmc_t *sdmmc, u32 id, u32
 		return 0;
 	DPRINTF("[mmc] switched buswidth\n");
 
-	u8 *ext_csd = (u8 *)malloc(512);
+	u8 ext_csd[512];
+	memset(ext_csd, 0, sizeof(ext_csd));
 	if (!_mmc_storage_get_ext_csd(storage, ext_csd))
-	{
-		free(ext_csd);
 		return 0;
-	}
-	//gfx_hexdump(&gfx_con, 0, ext_csd, 512);
 
-	storage->sec_cnt = *(u32 *)&ext_csd[EXT_CSD_SEC_CNT];
+	#ifdef SDMMC_DEBUGGING
+	dbg_print("ext_csd:");
+	for (u32 i=0; i<512; i++)
+	{
+		if ((i % 16) == 0)
+			dbg_print("\n");
+
+		dbg_print("%02X ", (u32)ext_csd[i]);
+	}
+	dbg_print("\n");
+	#endif
+
+	memcpy(&storage->sec_cnt, &ext_csd[EXT_CSD_SEC_CNT], sizeof(u32));
 
 	if (storage->cid[0xE] == 0x11 && ext_csd[EXT_CSD_BKOPS_EN] & EXT_CSD_BKOPS_LEVEL_2)
 		_mmc_storage_enable_bkops(storage);
 
 	if (!_mmc_storage_enable_highspeed(storage, ext_csd[EXT_CSD_CARD_TYPE], type))
-	{
-		free(ext_csd);
 		return 0;
-	}
+
 	DPRINTF("[mmc] switched to possible highspeed mode\n");
 
 	sdmmc_sd_clock_ctrl(storage->sdmmc, 1);
-
-	free(ext_csd);
 	return 1;
 }
 
@@ -788,19 +792,28 @@ int sdmmc_storage_init_sd(sdmmc_storage_t *storage, sdmmc_t *sdmmc, u32 id, u32 
 		return 0;
 	DPRINTF("[sd] cleared card detect\n");
 
-	u8 *buf = (u8 *)malloc(512);
-	if (!_sd_storage_get_scr(storage, buf))
+	u8 scr_buf[512];
+	if (!_sd_storage_get_scr(storage, scr_buf))
 		return 0;
-	memcpy(storage->scr, buf, 8);
+
+	memcpy(storage->scr, scr_buf, 8);
 	DPRINTF("[sd] got scr\n");
+	#ifdef SDMMC_DEBUGGING
+	for (u32 i=0; i<512; i++)
+	{
+		if ((i % 16) == 0)
+			dbg_print("\n");
+
+		dbg_print("%02X ", (u32)scr_buf[i]);
+	}
+	dbg_print("\n");
+	#endif
 
 	if (bus_width == SDMMC_BUS_WIDTH_4 && storage->scr[1] & 4)
 	{
 		if (!_sd_storage_execute_app_cmd_type1(storage, &tmp, SD_APP_SET_BUS_WIDTH, SD_BUS_WIDTH_4, 0, R1_STATE_TRAN))
-		{
-			free(buf);
 			return 0;
-		}
+
 		sdmmc_set_bus_width(storage->sdmmc, SDMMC_BUS_WIDTH_4);
 		DPRINTF("[sd] switched to wide bus width\n");
 	}
@@ -809,26 +822,20 @@ int sdmmc_storage_init_sd(sdmmc_storage_t *storage, sdmmc_t *sdmmc, u32 id, u32 
 
 	if (storage->is_low_voltage)
 	{
-		if (!_sd_storage_enable_highspeed_low_volt(storage, type, buf))
-		{
-			free(buf);
+		if (!_sd_storage_enable_highspeed_low_volt(storage, type, scr_buf))
 			return 0;
-		}
+
 		DPRINTF("[sd] enabled highspeed (low voltage)\n");
 	}
 	else if (type != 6 && (storage->scr[0] & 0xF) != 0)
 	{
-		if (!_sd_storage_enable_highspeed_high_volt(storage, buf))
-		{
-			free(buf);
+		if (!_sd_storage_enable_highspeed_high_volt(storage, scr_buf))
 			return 0;
-		}
+
 		DPRINTF("[sd] enabled highspeed (high voltage)\n");
 	}
 
 	sdmmc_sd_clock_ctrl(sdmmc, 1);
-
-	free(buf);
 	return 1;
 }
 

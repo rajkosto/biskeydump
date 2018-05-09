@@ -25,7 +25,7 @@
 
 static void shutdown_using_pmic()
 {
-    const u8 MAX77620_I2C_PERIPH = I2C_5;
+    const u8 MAX77620_I2C_PERIPH = I2C_PWR;
     const u8 MAX77620_I2C_ADDR = 0x3C;
 
     const u8 MAX77620_REG_ONOFFCNFG1 = 0x41;

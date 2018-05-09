@@ -48,30 +48,34 @@ void config_oscillators()
 
 void config_gpios()
 {
-	PINMUX_AUX(PINMUX_AUX_UART2_TX) = 0;
-	PINMUX_AUX(PINMUX_AUX_UART3_TX) = 0;
+	pinmux_set_config(PINMUX_UART2_TX_INDEX, 0);
+	pinmux_set_config(PINMUX_UART3_TX_INDEX, 0);
+	pinmux_set_config(PINMUX_GPIO_PE6_INDEX, PINMUX_INPUT_ENABLE);
+	pinmux_set_config(PINMUX_GPIO_PH6_INDEX, PINMUX_INPUT_ENABLE);
 
-	PINMUX_AUX(PINMUX_AUX_GPIO_PE6) = 0x40;
-	PINMUX_AUX(PINMUX_AUX_GPIO_PH6) = 0x40;
-
-	gpio_config(GPIO_PORT_G, GPIO_PIN_0, GPIO_MODE_GPIO);
-	gpio_config(GPIO_PORT_D, GPIO_PIN_1, GPIO_MODE_GPIO);
-	gpio_config(GPIO_PORT_E, GPIO_PIN_6, GPIO_MODE_GPIO);
-	gpio_config(GPIO_PORT_H, GPIO_PIN_6, GPIO_MODE_GPIO);
-	gpio_output_enable(GPIO_PORT_G, GPIO_PIN_0, GPIO_OUTPUT_DISABLE);
-	gpio_output_enable(GPIO_PORT_D, GPIO_PIN_1, GPIO_OUTPUT_DISABLE);
-	gpio_output_enable(GPIO_PORT_E, GPIO_PIN_6, GPIO_OUTPUT_DISABLE);
-	gpio_output_enable(GPIO_PORT_H, GPIO_PIN_6, GPIO_OUTPUT_DISABLE);
+	gpio_config(GPIO_BY_NAME(UART2_TX), GPIO_MODE_GPIO);
+	gpio_config(GPIO_BY_NAME(UART3_TX), GPIO_MODE_GPIO);
+	gpio_config(GPIO_DECOMPOSE(GPIO_E6_INDEX), GPIO_MODE_GPIO);
+	gpio_config(GPIO_DECOMPOSE(GPIO_H6_INDEX), GPIO_MODE_GPIO);
+	gpio_output_enable(GPIO_BY_NAME(UART2_TX), GPIO_OUTPUT_DISABLE);
+	gpio_output_enable(GPIO_BY_NAME(UART3_TX), GPIO_OUTPUT_DISABLE);
+	gpio_output_enable(GPIO_DECOMPOSE(GPIO_E6_INDEX), GPIO_OUTPUT_DISABLE);
+	gpio_output_enable(GPIO_DECOMPOSE(GPIO_H6_INDEX), GPIO_OUTPUT_DISABLE);
 
 	pinmux_config_i2c(I2C_1);
-	pinmux_config_i2c(I2C_5);
-	pinmux_config_uart(UART_A);
+	pinmux_config_i2c(I2C_PWR);
+
+	//unused UART_A
+	PINMUX_SET_UNUSED_BY_NAME(UART1_RX);
+	PINMUX_SET_UNUSED_BY_NAME(UART1_TX);
+	PINMUX_SET_UNUSED_BY_NAME(UART1_CTS);
+	PINMUX_SET_UNUSED_BY_NAME(UART1_RTS);
 
 	//Configure volume up/down as inputs.
-	gpio_config(GPIO_PORT_X, GPIO_PIN_6, GPIO_MODE_GPIO);
-	gpio_config(GPIO_PORT_X, GPIO_PIN_7, GPIO_MODE_GPIO);
-	gpio_output_enable(GPIO_PORT_X, GPIO_PIN_6, GPIO_OUTPUT_DISABLE);
-	gpio_output_enable(GPIO_PORT_X, GPIO_PIN_7, GPIO_OUTPUT_DISABLE);
+	gpio_config(GPIO_BY_NAME(BUTTON_VOL_UP), GPIO_MODE_GPIO);
+	gpio_config(GPIO_BY_NAME(BUTTON_VOL_DOWN), GPIO_MODE_GPIO);
+	gpio_output_enable(GPIO_BY_NAME(BUTTON_VOL_UP), GPIO_OUTPUT_DISABLE);
+	gpio_output_enable(GPIO_BY_NAME(BUTTON_VOL_DOWN), GPIO_OUTPUT_DISABLE);
 }
 
 void config_pmc_scratch()
@@ -142,13 +146,16 @@ void config_hw()
 	APB_MISC(0x40) = 0;
 	config_gpios();
 
-	//clock_enable_uart(UART_C);
-	//uart_init(UART_C, 115200);
+#ifdef DEBUG_UART_PORT
+	clock_enable_uart(DEBUG_UART_PORT);
+	uart_init(DEBUG_UART_PORT, 115200);
+	pinmux_config_uart(DEBUG_UART_PORT);
+#endif
 
 	clock_enable_cl_dvfs();
 
 	clock_enable_i2c(I2C_1);
-	clock_enable_i2c(I2C_5);
+	clock_enable_i2c(I2C_PWR);
 
 	static const clock_t clock_unk1 = { 0x358, 0x360, 0x42C, 0x1F, 0, 0 };
 	static const clock_t clock_unk2 = { 0x358, 0x360, 0, 0x1E, 0, 0 };
@@ -156,21 +163,21 @@ void config_hw()
 	clock_enable(&clock_unk2);
 
 	i2c_init(I2C_1);
-	i2c_init(I2C_5);
+	i2c_init(I2C_PWR);
 
-	i2c_send_byte(I2C_5, 0x3C, MAX77620_REG_CNFGBBC, 0x40);
-	i2c_send_byte(I2C_5, 0x3C, MAX77620_REG_ONOFFCNFG1, 0x78);
+	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_CNFGBBC, 0x40);
+	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_ONOFFCNFG1, 0x78);
 
-	i2c_send_byte(I2C_5, 0x3C, MAX77620_REG_FPS_CFG0, 0x38);
-	i2c_send_byte(I2C_5, 0x3C, MAX77620_REG_FPS_CFG1, 0x3A);
-	i2c_send_byte(I2C_5, 0x3C, MAX77620_REG_FPS_CFG2, 0x38);
-	i2c_send_byte(I2C_5, 0x3C, MAX77620_REG_FPS_LDO4, 0xF);
-	i2c_send_byte(I2C_5, 0x3C, MAX77620_REG_FPS_LDO8, 0xC7);
-	i2c_send_byte(I2C_5, 0x3C, MAX77620_REG_FPS_SD0, 0x4F);
-	i2c_send_byte(I2C_5, 0x3C, MAX77620_REG_FPS_SD1, 0x29);
-	i2c_send_byte(I2C_5, 0x3C, MAX77620_REG_FPS_SD3, 0x1B);
+	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_CFG0, 0x38);
+	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_CFG1, 0x3A);
+	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_CFG2, 0x38);
+	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_LDO4, 0xF);
+	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_LDO8, 0xC7);
+	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_SD0, 0x4F);
+	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_SD1, 0x29);
+	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_SD3, 0x1B);
 
-	i2c_send_byte(I2C_5, 0x3C, MAX77620_REG_SD0, 42); //42 = (1125000 - 600000) / 12500 -> 1.125V
+	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_SD0, 42); //42 = (1125000 - 600000) / 12500 -> 1.125V
 
 	config_pmc_scratch();
 

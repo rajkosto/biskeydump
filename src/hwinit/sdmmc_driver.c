@@ -26,11 +26,12 @@
 #include "pinmux.h"
 #include "gpio.h"
 
-/*#include "gfx.h"
-extern gfx_ctxt_t gfx_ctxt;
-extern gfx_con_t gfx_con;
-#define DPRINTF(...) gfx_printf(&gfx_con, __VA_ARGS__)*/
+#ifdef SDMMCDRIVER_DEBUGGING
+#include "lib/printk.h"
+#define DPRINTF(...) dbg_print(__VA_ARGS__)
+#else
 #define DPRINTF(...)
+#endif
 
 /*! SCMMC controller base addresses. */
 static const u32 _sdmmc_bases[4] = {
@@ -879,12 +880,12 @@ static int _sdmmc_execute_cmd_inner(sdmmc_t *sdmmc, sdmmc_cmd_t *cmd, sdmmc_req_
 static int _sdmmc_config_sdmmc1()
 {
 	//Configure SD card detect.
-	PINMUX_AUX(PINMUX_AUX_GPIO_PZ1) = 0x49; //GPIO control, pull up.
+	pinmux_set_config(PINMUX_GPIO_Z1, 0x49); //GPIO control, pull up.
 	APB_MISC(APB_MISC_GP_VGPIO_GPIO_MUX_SEL) = 0;
-	gpio_config(GPIO_PORT_Z, GPIO_PIN_1, GPIO_MODE_GPIO);
-	gpio_output_enable(GPIO_PORT_Z, GPIO_PIN_1, GPIO_OUTPUT_DISABLE);
+	gpio_config(GPIO_DECOMPOSE(GPIO_Z1_INDEX), GPIO_MODE_GPIO);
+	gpio_output_enable(GPIO_DECOMPOSE(GPIO_Z1_INDEX), GPIO_OUTPUT_DISABLE);
 	sleep(100);
-	if(!!gpio_read(GPIO_PORT_Z, GPIO_PIN_1))
+	if(!!gpio_read(GPIO_DECOMPOSE(GPIO_Z1_INDEX)))
 		return 0;
 
 	/*
@@ -898,12 +899,12 @@ static int _sdmmc_config_sdmmc1()
 
 	//Configure SDMMC1 pinmux.
 	APB_MISC(APB_MISC_GP_SDMMC1_CLK_LPBK_CONTROL) = 1;
-	PINMUX_AUX(PINMUX_AUX_SDMMC1_CLK) = 0x2060;
-	PINMUX_AUX(PINMUX_AUX_SDMMC1_CMD) = 0x2068;
-	PINMUX_AUX(PINMUX_AUX_SDMMC1_DAT3) = 0x2068;
-	PINMUX_AUX(PINMUX_AUX_SDMMC1_DAT2) = 0x2068;
-	PINMUX_AUX(PINMUX_AUX_SDMMC1_DAT1) = 0x2068;
-	PINMUX_AUX(PINMUX_AUX_SDMMC1_DAT0) = 0x2068;
+	pinmux_set_config(PINMUX_SDMMC1_CLK_INDEX, 0x2060);
+	pinmux_set_config(PINMUX_SDMMC1_CMD_INDEX, 0x2068);
+	pinmux_set_config(PINMUX_SDMMC1_DAT3_INDEX, 0x2068);
+	pinmux_set_config(PINMUX_SDMMC1_DAT2_INDEX, 0x2068);
+	pinmux_set_config(PINMUX_SDMMC1_DAT1_INDEX, 0x2068);
+	pinmux_set_config(PINMUX_SDMMC1_DAT0_INDEX, 0x2068);
 
 	//Make sure the SDMMC1 controller is powered.
 	PMC(APBDEV_PMC_NO_IOPOWER) &= ~(1 << 12);
@@ -911,10 +912,10 @@ static int _sdmmc_config_sdmmc1()
 	PMC(APBDEV_PMC_PWR_DET_VAL) |= (1 << 12);
 
 	//Set enable SD card power.
-	PINMUX_AUX(PINMUX_AUX_DMIC3_CLK) = 0x45; //GPIO control, pull down.
-	gpio_config(GPIO_PORT_E, GPIO_PIN_4, GPIO_MODE_GPIO);
-	gpio_write(GPIO_PORT_E, GPIO_PIN_4, GPIO_HIGH);
-	gpio_output_enable(GPIO_PORT_E, GPIO_PIN_4, GPIO_OUTPUT_ENABLE);
+	pinmux_set_config(PINMUX_DMIC3_CLK_INDEX, 0x45); //GPIO control, pull down.
+	gpio_config(GPIO_BY_NAME(DMIC3_CLK), GPIO_MODE_GPIO);
+	gpio_write(GPIO_BY_NAME(DMIC3_CLK), GPIO_HIGH);
+	gpio_output_enable(GPIO_BY_NAME(DMIC3_CLK), GPIO_OUTPUT_ENABLE);
 
 	sleep(1000);
 

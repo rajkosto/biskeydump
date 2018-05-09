@@ -17,16 +17,17 @@
 #include "btn.h"
 #include "i2c.h"
 #include "gpio.h"
+#include "pinmux.h"
 #include "t210.h"
 
 u32 btn_read()
 {
 	u32 res = 0;
-	if (!gpio_read(GPIO_PORT_X, GPIO_PIN_7))
+	if (!gpio_read(GPIO_BY_NAME(BUTTON_VOL_DOWN)))
 		res |= BTN_VOL_DOWN;
-	if (!gpio_read(GPIO_PORT_X, GPIO_PIN_6))
+	if (!gpio_read(GPIO_BY_NAME(BUTTON_VOL_UP)))
 		res |= BTN_VOL_UP;
-	if (i2c_recv_byte(4, 0x3C, 0x15) & 0x4)
+	if (i2c_recv_byte(I2C_PWR, 0x3C, 0x15) & 0x4)
 		res |= BTN_POWER;
 	return res;
 }

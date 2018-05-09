@@ -91,6 +91,12 @@
 /*! System registers. */
 #define AHB_ARBITRATION_XBAR_CTRL 0xE0
 
+/*! APB MISC registers. */
+#define APB_MISC_GP_SDMMC1_CLK_LPBK_CONTROL 0x8D4
+#define APB_MISC_GP_SDMMC3_CLK_LPBK_CONTROL 0x8D8
+#define APB_MISC_GP_SDMMC1_PAD_CFGPADCTRL 0xA98
+#define APB_MISC_GP_VGPIO_GPIO_MUX_SEL 0xB74
+
 /*! Secure boot registers. */
 #define SB_CSR 0x0
 #define SB_AA64_RESET_LOW 0x30

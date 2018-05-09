@@ -23,8 +23,7 @@
 #define I2C_2 1
 #define I2C_3 2
 #define I2C_4 3
-#define I2C_5 4
-#define I2C_6 5
+#define I2C_PWR 4
 
 void i2c_init(u32 idx);
 u32 i2c_send_buf_small(u32 idx, u32 x, u32 y, u8 *buf, u32 size);

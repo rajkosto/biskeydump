@@ -1,6 +1,5 @@
 #include <stdbool.h>
 #include "utils.h"
-#include "se.h"
 #include "fuse.h"
 #include "hwinit/t210.h"
 #include "hwinit/pmc.h"

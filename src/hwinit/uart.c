@@ -49,8 +49,7 @@ void uart_init(u32 idx, u32 baud)
 void uart_wait_idle(u32 idx, u32 which)
 {
 	uart_t *uart = (uart_t *)(UART_BASE + uart_baseoff[idx]);
-	while (!(uart->UART_VENDOR_STATUS & which))
-		;
+	while (!(uart->UART_VENDOR_STATUS & which)) {}
 }
 
 void uart_send(u32 idx, u8 *buf, u32 len)
@@ -59,20 +58,37 @@ void uart_send(u32 idx, u8 *buf, u32 len)
 
 	for (u32 i = 0; i != len; i++)
 	{
-		while (uart->UART_LSR & UART_TX_FIFO_FULL)
-			;
+		while (uart->UART_LSR & UART_TX_FIFO_FULL) {}
 		uart->UART_THR_DLAB = buf[i];
 	};
 }
 
-void uart_recv(u32 idx, u8 *buf, u32 len)
+void uart_print(u32 idx, const char* buf, u32 len)
 {
 	uart_t *uart = (uart_t *)(UART_BASE + uart_baseoff[idx]);
 
 	for (u32 i = 0; i != len; i++)
 	{
-		while (uart->UART_LSR & UART_RX_FIFO_EMPTY)
-			;
-		buf[i] = uart->UART_THR_DLAB;
+		while (uart->UART_LSR & UART_TX_FIFO_FULL) {}
+
+		if (buf[i] == '\n')
+		{
+			uart->UART_THR_DLAB = '\r';
+			while (uart->UART_LSR & UART_TX_FIFO_FULL) {}
+		}
+		uart->UART_THR_DLAB = buf[i];
 	};
+}
+
+u32 uart_has_bytes(u32 idx)
+{
+	uart_t *uart = (uart_t *)(UART_BASE + uart_baseoff[idx]);
+	return (uart->UART_LSR & UART_RX_FIFO_EMPTY) == 0;
+}
+
+u8 uart_recv(u32 idx)
+{
+	uart_t *uart = (uart_t *)(UART_BASE + uart_baseoff[idx]);
+	while (uart->UART_LSR & UART_RX_FIFO_EMPTY) {}
+	return uart->UART_THR_DLAB;
 }

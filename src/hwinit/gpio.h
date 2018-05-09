@@ -74,4 +74,16 @@ void gpio_output_enable(u32 port, u32 pins, int enable);
 void gpio_write(u32 port, u32 pins, int high);
 int gpio_read(u32 port, u32 pins);
 
+static inline u32 gpio_index_port(u32 index)
+{
+	return index >> 3;
+}
+
+static inline u32 gpio_index_bitmask(u32 index)
+{
+	return 1u << (index & 7);
+}
+
+#define GPIO_DECOMPOSE(x) gpio_index_port(x), gpio_index_bitmask(x)
+
 #endif
