@@ -880,7 +880,7 @@ static int _sdmmc_execute_cmd_inner(sdmmc_t *sdmmc, sdmmc_cmd_t *cmd, sdmmc_req_
 static int _sdmmc_config_sdmmc1()
 {
 	//Configure SD card detect.
-	pinmux_set_config(PINMUX_GPIO_Z1, 0x49); //GPIO control, pull up.
+	pinmux_set_config(PINMUX_GPIO_Z1, PINMUX_INPUT_ENABLE | PINMUX_PULL_UP | PINMUX_GPIO_PZ1_FUNC_SDMMC1);
 	APB_MISC(APB_MISC_GP_VGPIO_GPIO_MUX_SEL) = 0;
 	gpio_config(GPIO_DECOMPOSE(GPIO_Z1_INDEX), GPIO_MODE_GPIO);
 	gpio_output_enable(GPIO_DECOMPOSE(GPIO_Z1_INDEX), GPIO_OUTPUT_DISABLE);
@@ -899,12 +899,12 @@ static int _sdmmc_config_sdmmc1()
 
 	//Configure SDMMC1 pinmux.
 	APB_MISC(APB_MISC_GP_SDMMC1_CLK_LPBK_CONTROL) = 1;
-	pinmux_set_config(PINMUX_SDMMC1_CLK_INDEX, 0x2060);
-	pinmux_set_config(PINMUX_SDMMC1_CMD_INDEX, 0x2068);
-	pinmux_set_config(PINMUX_SDMMC1_DAT3_INDEX, 0x2068);
-	pinmux_set_config(PINMUX_SDMMC1_DAT2_INDEX, 0x2068);
-	pinmux_set_config(PINMUX_SDMMC1_DAT1_INDEX, 0x2068);
-	pinmux_set_config(PINMUX_SDMMC1_DAT0_INDEX, 0x2068);
+	pinmux_set_config(PINMUX_SDMMC1_CLK_INDEX, PINMUX_DRIVE_2X | PINMUX_INPUT_ENABLE | PINMUX_PARKED);
+	pinmux_set_config(PINMUX_SDMMC1_CMD_INDEX, PINMUX_DRIVE_2X | PINMUX_INPUT_ENABLE | PINMUX_PARKED | PINMUX_PULL_UP);
+	pinmux_set_config(PINMUX_SDMMC1_DAT3_INDEX, PINMUX_DRIVE_2X | PINMUX_INPUT_ENABLE | PINMUX_PARKED | PINMUX_PULL_UP);
+	pinmux_set_config(PINMUX_SDMMC1_DAT2_INDEX, PINMUX_DRIVE_2X | PINMUX_INPUT_ENABLE | PINMUX_PARKED | PINMUX_PULL_UP);
+	pinmux_set_config(PINMUX_SDMMC1_DAT1_INDEX, PINMUX_DRIVE_2X | PINMUX_INPUT_ENABLE | PINMUX_PARKED | PINMUX_PULL_UP);
+	pinmux_set_config(PINMUX_SDMMC1_DAT0_INDEX, PINMUX_DRIVE_2X | PINMUX_INPUT_ENABLE | PINMUX_PARKED | PINMUX_PULL_UP);
 
 	//Make sure the SDMMC1 controller is powered.
 	PMC(APBDEV_PMC_NO_IOPOWER) &= ~(1 << 12);
@@ -912,7 +912,7 @@ static int _sdmmc_config_sdmmc1()
 	PMC(APBDEV_PMC_PWR_DET_VAL) |= (1 << 12);
 
 	//Set enable SD card power.
-	pinmux_set_config(PINMUX_DMIC3_CLK_INDEX, 0x45); //GPIO control, pull down.
+	pinmux_set_config(PINMUX_DMIC3_CLK_INDEX, PINMUX_INPUT_ENABLE | PINMUX_PULL_DOWN | PINMUX_DMIC3_CLK_FUNC_I2S5A); // that last one ?
 	gpio_config(GPIO_BY_NAME(DMIC3_CLK), GPIO_MODE_GPIO);
 	gpio_write(GPIO_BY_NAME(DMIC3_CLK), GPIO_HIGH);
 	gpio_output_enable(GPIO_BY_NAME(DMIC3_CLK), GPIO_OUTPUT_ENABLE);
