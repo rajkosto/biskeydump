@@ -56,12 +56,13 @@ static NOINLINE const char* hexify_crypto_key(const void* dataBuf, size_t keySiz
 
 static NOINLINE int tsec_key_readout(sdmmc_storage_t* mmc, void* outBuf)  //noinline so we get the stack space back
 {
-    u8 carveoutData[0x1000];
+    u8 carveoutData[0x2A00];
     u32 carveoutCurrIdx = 0;
     
     static const u32 PKG1LDR_OFFSET = 0x100000;
     static const u32 PKG1LDR_SIZE = 0x40000;    
-    static const u32 TSECFW_SIZE = 0xF00;
+    static const u32 SML_TSECFW_SIZE = 0xF00;
+    static const u32 BIG_TSECFW_SIZE = 0x2900;
 
     static const u32 SECTOR_SIZE = 512;
     static const u32 BUFFER_SIZE_IN_SECTORS = sizeof(carveoutData)/SECTOR_SIZE;    
@@ -120,7 +121,7 @@ static NOINLINE int tsec_key_readout(sdmmc_storage_t* mmc, void* outBuf)  //noin
         else //read to tsecfw buffer
         {
             carveoutCurrIdx += numBytesRead;
-            if (carveoutCurrIdx >= TSECFW_SIZE)
+            if (carveoutCurrIdx >= BIG_TSECFW_SIZE)
                 break; //we are done
         }
 
@@ -138,19 +139,28 @@ static NOINLINE int tsec_key_readout(sdmmc_storage_t* mmc, void* outBuf)  //noin
     u8* carveoutBytes = (u8*)(((u32)carveoutData + 0xFF) & ~(0xFFu)); //align to 0x100
     u32 carveoutSize = (u32)carveoutData+sizeof(carveoutData)-(u32)carveoutBytes;
     memmove(carveoutBytes, carveoutData, carveoutSize);
+    u32 tsecFwSize = 0;
     {
-        u32 theCrc = crc32b(carveoutBytes, TSECFW_SIZE);
-        bool crcCorrect = (theCrc == 0xB035021F);
-        printk("TSEC FW CRC32: %08x - %s\n", theCrc, crcCorrect ? "CORRECT" : "INCORRECT");
-        if (!crcCorrect)
-			return -11;
+        u32 theCrc = crc32b(carveoutBytes, SML_TSECFW_SIZE);
+        if (theCrc == 0xB035021F)
+            tsecFwSize = SML_TSECFW_SIZE;
+        else
+        {
+            theCrc = crc32b(carveoutBytes, BIG_TSECFW_SIZE);
+            if (theCrc == 0xBEC3BC15)
+                tsecFwSize = BIG_TSECFW_SIZE;
+        }
+
+        printk("TSEC FW CRC32: %08x - %s\n", theCrc, (tsecFwSize != 0) ? "CORRECT" : "INCORRECT");
     }    
+    if (tsecFwSize == 0)
+		return -11;
     
     int retVal = 0;
     const u32 tsecRev = 1;
     printk("TSEC using carveout 0x%08x rev %u\n", (u32)carveoutBytes, tsecRev);
     memset(outBuf,0,0x10);
-    retVal = tsec_query((u32)carveoutBytes, outBuf, tsecRev);
+    retVal = tsec_query((u32)carveoutBytes, tsecFwSize, outBuf, tsecRev);
     return retVal;
 }
 

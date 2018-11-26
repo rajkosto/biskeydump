@@ -46,7 +46,7 @@ static int _tsec_dma_pa_to_internal_100(int not_imem, int i_offset, int pa_offse
 	return _tsec_dma_wait_idle();
 }
 
-int tsec_query(u32 carveout, u8 *dst, u32 rev)
+int tsec_query(u32 carveout, u32 fwSize, u8 *dst, u32 rev)
 {
 	int res = 0;
 
@@ -102,7 +102,7 @@ int tsec_query(u32 carveout, u8 *dst, u32 rev)
     }
 #endif
 	TSEC(0x1110) = carveout >> 8;// tsec_dmatrfbase_r
-	for (u32 addr = 0; addr < 0xF00; addr += 0x100)
+	for (u32 addr = 0; addr < fwSize; addr += 0x100)
 	{
 		if (!_tsec_dma_pa_to_internal_100(0, addr, addr))
 		{
