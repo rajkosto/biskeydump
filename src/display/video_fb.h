@@ -49,6 +49,8 @@
 
 int video_get_col(void);
 int video_get_row(void);
+void video_reposition(int row, int col);
+void video_clear_line();
 
 int video_init(void *fb);
 int video_resume(void *fb, int row, int col);

@@ -1548,6 +1548,18 @@ int video_get_row(void) {
     return console_row;
 }
 
+void video_reposition(int row, int col)
+{
+	console_row = row;
+	console_col = col;
+}
+
+void video_clear_line()
+{
+	while (console_col < CONSOLE_COLS && console_col != 0)
+		video_putc(' ');
+}
+
 int video_init (void *videobase)
 {
 	unsigned char color8;
