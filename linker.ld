@@ -109,6 +109,9 @@ SECTIONS
     __bss_end__ = .;
     __end__ = ABSOLUTE(.) ;
 
+    PROVIDE(__stack = 0x4003F000);
+    . = __stack;
+
     /* ==================
        ==== Metadata ====
        ================== */

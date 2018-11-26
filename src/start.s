@@ -18,22 +18,25 @@ _start:
     ldr r0, =__start__
     adr r1, _start
     cmp r0, r1
-    bne _relocation_loop_end
+    beq _after_relocation
+
+    adr r2, _relocator
+    ldr r3, =__stack
+    adr r4, _relocator_end
+    mov r12, r3
+    _copy_relocator_loop:
+        ldr r5, [r2], #4
+        str r5, [r3], #4
+        cmp  r2, r4
+        bne _copy_relocator_loop
 
     ldr r2, =__bss_start__
-    sub r2, r2, r0          /* size >= 32, obviously */
-    _relocation_loop:
-        ldmia r1!, {r3-r10}
-        stmia r0!, {r3-r10}
-        subs  r2, #0x20
-        bne _relocation_loop
-
-    ldr r12, =_relocation_loop_end
+    sub r2, r2, r0
     bx  r12
 
-    _relocation_loop_end:
+    _after_relocation:
     /* Set the stack pointer */
-    ldr sp, =0x4003F000
+    ldr sp, =__stack
     mov fp, #0
 
     /* Clear .bss */
@@ -51,4 +54,14 @@ _start:
     CLEAR_GPR_REG_ITER
     .endr
     bl  main
+    b   .
+_relocator:
+    mov r12, r0
+    _relocation_loop:
+        ldmia r1!, {r3-r10}
+        stmia r0!, {r3-r10}
+        subs  r2, #0x20
+        bne _relocation_loop
+    bx  r12
+_relocator_end:
     b   .
