@@ -14,12 +14,36 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "util.h"
+#include "timer.h"
 #include "t210.h"
 
-void exec_cfg(u32 *base, const cfg_op_t *ops, u32 num_ops)
+u32 get_tmr_s()
 {
-	for(u32 i = 0; i < num_ops; i++)
-		base[ops[i].off] = ops[i].val;
+	return RTC(RTC_SECONDS);
 }
 
+u32 get_tmr_ms()
+{
+	//reading RTC_MILLI_SECONDS updates RTC_SHADOW_SECONDS value to match
+	u32 millis = RTC(RTC_MILLI_SECONDS);
+	u32 seconds = RTC(RTC_SHADOW_SECONDS);
+
+	return (millis | (seconds << 10));
+}
+
+u32 get_tmr_us()
+{
+	return TMR(TMR_US_OFFS);
+}
+
+void msleep(u32 milliseconds)
+{
+	u32 start = RTC(RTC_MILLI_SECONDS) | (RTC(RTC_SHADOW_SECONDS) << 10);
+	while (((RTC(RTC_MILLI_SECONDS) | (RTC(RTC_SHADOW_SECONDS) << 10)) - start) <= milliseconds) {}
+}
+
+void usleep(u32 microseconds)
+{
+	u32 start = TMR(TMR_US_OFFS);
+	while ((TMR(TMR_US_OFFS) - start) <= microseconds) {}
+}

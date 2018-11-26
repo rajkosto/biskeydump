@@ -25,6 +25,7 @@
 #define VIC_BASE 0x54340000
 #define TSEC_BASE 0x54500000
 #define SOR1_BASE 0x54580000
+#define PG_UP_BASE 0x60000000
 #define TMR_BASE 0x60005000
 #define CLOCK_BASE 0x60006000
 #define FLOW_CTLR_BASE 0x60007000
@@ -43,6 +44,7 @@
 #define APB_MISC_BASE 0x70000000
 #define PINMUX_AUX_BASE 0x70003000
 #define UART_BASE 0x70006000
+#define RTC_BASE 0x7000E000
 #define PMC_BASE 0x7000E400
 #define SYSCTR0_BASE 0x7000F000
 #define FUSE_BASE 0x7000F800
@@ -78,6 +80,7 @@
 #define EXCP_VEC(off) _REG(EXCP_VEC_BASE, off)
 #define APB_MISC(off) _REG(APB_MISC_BASE, off)
 #define PINMUX_AUX(off) _REG(PINMUX_AUX_BASE, off)
+#define RTC(off) _REG(RTC_BASE, off)
 #define PMC(off) _REG(PMC_BASE, off)
 #define SYSCTR0(off) _REG(SYSCTR0_BASE, off)
 #define FUSE(off) _REG(FUSE_BASE, off)
@@ -88,8 +91,12 @@
 #define MIPI_CAL(off) _REG(MIPI_CAL_BASE, off)
 #define I2S(off) _REG(I2S_BASE, off)
 
+/*! Misc registers. */
+#define APB_MISC_PP_PINMUX_GLOBAL 0x40
+
 /*! System registers. */
 #define AHB_ARBITRATION_XBAR_CTRL 0xE0
+#define AHB_AHB_SPARE_REG 0x110
 
 /*! APB MISC registers. */
 #define APB_MISC_GP_SDMMC1_CLK_LPBK_CONTROL 0x8D4
@@ -99,6 +106,7 @@
 
 /*! Secure boot registers. */
 #define SB_CSR 0x0
+#define SB_PIROM_START 0x4
 #define SB_AA64_RESET_LOW 0x30
 #define SB_AA64_RESET_HIGH 0x34
 

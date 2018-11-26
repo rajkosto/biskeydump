@@ -17,7 +17,7 @@
 #include <string.h>
 
 #include "sdmmc.h"
-#include "util.h"
+#include "timer.h"
 #include "clock.h"
 #include "mmc.h"
 #include "max7762x.h"
@@ -55,24 +55,26 @@ int sdmmc_get_voltage(sdmmc_t *sdmmc)
 
 static int _sdmmc_set_voltage(sdmmc_t *sdmmc, u32 power)
 {
+	u8 pwr = (power == SDMMC_POWER_1_8) ? TEGRA_MMC_PWRCTL_SD_BUS_VOLTAGE_V1_8 : TEGRA_MMC_PWRCTL_SD_BUS_VOLTAGE_V3_3;
+
 	switch (power)
 	{
 	case SDMMC_POWER_OFF:
 		sdmmc->regs->pwrcon &= ~TEGRA_MMC_PWRCTL_SD_BUS_POWER;
 		break;
 	case SDMMC_POWER_1_8:
-		sdmmc->regs->pwrcon =
-			(sdmmc->regs->pwrcon & TEGRA_MMC_PWRCTL_SD_BUS_VOLTAGE_MASK) |
-			TEGRA_MMC_PWRCTL_SD_BUS_VOLTAGE_V1_8;
-		break;
 	case SDMMC_POWER_3_3:
-		sdmmc->regs->pwrcon = TEGRA_MMC_PWRCTL_SD_BUS_VOLTAGE_V3_3;
+		sdmmc->regs->pwrcon = pwr;		
 		break;
 	default:
 		return 0;
 	}
 
-	sdmmc->regs->pwrcon |= TEGRA_MMC_PWRCTL_SD_BUS_POWER;
+	if (power != SDMMC_POWER_OFF)
+	{
+		pwr |= TEGRA_MMC_PWRCTL_SD_BUS_POWER;
+		sdmmc->regs->pwrcon = pwr;
+	}	
 
 	return 1;
 }
@@ -155,20 +157,20 @@ static int _sdmmc_wait_type4(sdmmc_t *sdmmc)
 	sdmmc->regs->field_1B0 |= 0x80000000;
 	_sdmmc_get_clkcon(sdmmc);
 
-	u32 timeout = get_tmr() + 5000;
+	u32 timeout = get_tmr_ms() + 5;
 	while (sdmmc->regs->field_1B0 & 0x80000000)
 	{
-		if (get_tmr() > timeout)
+		if (get_tmr_ms() > timeout)
 		{
 			res = 0;
 			goto out;
 		}
 	}
 
-	timeout = get_tmr() + 10000;
+	timeout = get_tmr_ms() + 10;
 	while (sdmmc->regs->field_1BC & 0x80000000)
 	{
-		if (get_tmr() > timeout)
+		if (get_tmr_ms() > timeout)
 		{
 			res = 0;
 			goto out;
@@ -199,32 +201,34 @@ int sdmmc_setup_clock(sdmmc_t *sdmmc, u32 type)
 	case 1:
 	case 5:
 	case 6:
-		sdmmc->regs->hostctl &= 0xFB;
-		sdmmc->regs->hostctl2 &= 0xFFF7;
+		sdmmc->regs->hostctl  &= 0xFB; //Should this be 0xFFFB (~4) ?
+		sdmmc->regs->hostctl2 &= SDHCI_CTRL_VDD_330;
 		break;
 	case 2:
 	case 7:
-		sdmmc->regs->hostctl |= 4;
-		sdmmc->regs->hostctl2 &= 0xFFF7;
+		sdmmc->regs->hostctl  |= 4;
+		sdmmc->regs->hostctl2 &= SDHCI_CTRL_VDD_330;
 		break;
 	case 3:
 	case 11:
 	case 13:
 	case 14:
-		sdmmc->regs->hostctl2 = (sdmmc->regs->hostctl2 & 0xFFF8) | 3;
-		sdmmc->regs->hostctl2 |= 8;
+		sdmmc->regs->hostctl2  = (sdmmc->regs->hostctl2 & SDHCI_CTRL_UHS_MASK) | UHS_SDR104_BUS_SPEED;
+		sdmmc->regs->hostctl2 |= SDHCI_CTRL_VDD_180;
 		break;
 	case 4:
-		sdmmc->regs->hostctl2 = (sdmmc->regs->hostctl2 & 0xFFF8) | 5;
-		sdmmc->regs->hostctl2 |= 8;
+		 //Non standard
+		sdmmc->regs->hostctl2  = (sdmmc->regs->hostctl2 & SDHCI_CTRL_UHS_MASK) | HS400_BUS_SPEED;
+		sdmmc->regs->hostctl2 |= SDHCI_CTRL_VDD_180;
 		break;
 	case 8:
-		sdmmc->regs->hostctl2 = sdmmc->regs->hostctl2 & 0xFFF8;
-		sdmmc->regs->hostctl2 |= 8;
+		sdmmc->regs->hostctl2  = (sdmmc->regs->hostctl2 & SDHCI_CTRL_UHS_MASK) | UHS_SDR12_BUS_SPEED;
+		sdmmc->regs->hostctl2 |= SDHCI_CTRL_VDD_180;
 		break;
 	case 10:
-		sdmmc->regs->hostctl2 = (sdmmc->regs->hostctl2 & 0xFFF8) | 2;
-		sdmmc->regs->hostctl2 |= 8;
+		//T210 Errata for SDR50, the host must be set to SDR104.
+		sdmmc->regs->hostctl2  = (sdmmc->regs->hostctl2 & SDHCI_CTRL_UHS_MASK) | UHS_SDR104_BUS_SPEED;
+		sdmmc->regs->hostctl2 |= SDHCI_CTRL_VDD_180;
 		break;
 	}
 
@@ -299,10 +303,30 @@ static int _sdmmc_cache_rsp(sdmmc_t *sdmmc, u32 *rsp, u32 size, u32 type)
 	case SDMMC_RSP_TYPE_2:
 		if (size < 0x10)
 			return 0;
-		rsp[0] = sdmmc->regs->rspreg0;
-		rsp[1] = sdmmc->regs->rspreg1;
-		rsp[2] = sdmmc->regs->rspreg2;
-		rsp[3] = sdmmc->regs->rspreg3;
+		// CRC is stripped, so shifting is needed.
+		u32 tempreg;
+		for (int i = 0; i < 4; i++)
+		{
+			switch(i)
+			{
+			case 0:
+				tempreg = sdmmc->regs->rspreg3;
+				break;
+			case 1:
+				tempreg = sdmmc->regs->rspreg2;
+				break;
+			case 2:
+				tempreg = sdmmc->regs->rspreg1;
+				break;
+			case 3:
+				tempreg = sdmmc->regs->rspreg0;
+				break;
+			}
+			rsp[i] = tempreg << 8;
+
+			if (i != 0)
+				rsp[i - 1] |= (tempreg >> 24) & 0xFF;
+		}
 		break;
 	default:
 		return 0;
@@ -345,35 +369,37 @@ int sdmmc_get_rsp(sdmmc_t *sdmmc, u32 *rsp, u32 size, u32 type)
 
 static void _sdmmc_reset(sdmmc_t *sdmmc)
 {
-	sdmmc->regs->swrst |= 
-		TEGRA_MMC_SWRST_SW_RESET_FOR_CMD_LINE | TEGRA_MMC_SWRST_SW_RESET_FOR_DAT_LINE;
+	sdmmc->regs->swrst |= TEGRA_MMC_SWRST_SW_RESET_FOR_CMD_LINE | TEGRA_MMC_SWRST_SW_RESET_FOR_DAT_LINE;
 	_sdmmc_get_clkcon(sdmmc);
-	u32 timeout = get_tmr() + 2000000;
-	while (sdmmc->regs->swrst << 29 >> 30 && get_tmr() < timeout)
-		;
+	u32 timeout = get_tmr_ms() + 2000;
+	while ( (sdmmc->regs->swrst << 29 >> 30) && get_tmr_ms() < timeout) {}
 }
 
 static int _sdmmc_wait_prnsts_type0(sdmmc_t *sdmmc, u32 wait_dat)
 {
 	_sdmmc_get_clkcon(sdmmc);
 
-	u32 timeout = get_tmr() + 2000000;
+	u32 timeout = get_tmr_ms() + 2000;
 	while(sdmmc->regs->prnsts & 1) //CMD inhibit.
-		if (get_tmr() > timeout)
+	{
+		if (get_tmr_ms() > timeout)
 		{
 			_sdmmc_reset(sdmmc);
 			return 0;
 		}
+	}
 
 	if (wait_dat)
 	{
-		timeout = get_tmr() + 2000000;
+		timeout = get_tmr_ms() + 2000;
 		while (sdmmc->regs->prnsts & 2) //DAT inhibit.
-			if (get_tmr() > timeout)
+		{
+			if (get_tmr_ms() > timeout)
 			{
 				_sdmmc_reset(sdmmc);
 				return 0;
 			}
+		}
 	}
 
 	return 1;
@@ -383,13 +409,15 @@ static int _sdmmc_wait_prnsts_type1(sdmmc_t *sdmmc)
 {
 	_sdmmc_get_clkcon(sdmmc);
 
-	u32 timeout = get_tmr() + 2000000;
+	u32 timeout = get_tmr_ms() + 2000;
 	while (!(sdmmc->regs->prnsts & 0x100000)) //DAT0 line level.
-		if (get_tmr() > timeout)
+	{
+		if (get_tmr_ms() > timeout)
 		{
 			_sdmmc_reset(sdmmc);
 			return 0;
 		}
+	}
 
 	return 1;
 }
@@ -476,27 +504,27 @@ static int _sdmmc_config_tuning_once(sdmmc_t *sdmmc, u32 cmd)
 	sdmmc->regs->clkcon &= ~TEGRA_MMC_CLKCON_SD_CLOCK_ENABLE;
 	_sdmmc_parse_cmd_48(sdmmc, cmd);
 	_sdmmc_get_clkcon(sdmmc);
-	sleep(1);
+	usleep(1);
 	_sdmmc_reset(sdmmc);
 	sdmmc->regs->clkcon |= TEGRA_MMC_CLKCON_SD_CLOCK_ENABLE;
 	_sdmmc_get_clkcon(sdmmc);
 
-	u32 timeout = get_tmr() + 5000;
-	while (get_tmr() < timeout)
+	u32 timeout = get_tmr_us() + 5000;
+	while (get_tmr_us() < timeout)
 	{
 		if (sdmmc->regs->norintsts & 0x20)
 		{
 			sdmmc->regs->norintsts = 0x20;
 			sdmmc->regs->norintstsen &= 0xFFDF;
 			_sdmmc_get_clkcon(sdmmc);
-			sleep((1000 * 8 + sdmmc->divisor - 1) / sdmmc->divisor);
+			usleep((1000 * 8 + sdmmc->divisor - 1) / sdmmc->divisor);
 			return 1;
 		}
 	}
 	_sdmmc_reset(sdmmc);
 	sdmmc->regs->norintstsen &= 0xFFDF;
 	_sdmmc_get_clkcon(sdmmc);
-	sleep((1000 * 8 + sdmmc->divisor - 1) / sdmmc->divisor);
+	usleep((1000 * 8 + sdmmc->divisor - 1) / sdmmc->divisor);
 	return 0;
 }
 
@@ -526,16 +554,16 @@ int sdmmc_config_tuning(sdmmc_t *sdmmc, u32 type, u32 cmd)
 	sdmmc->regs->field_1C0 = (sdmmc->regs->field_1C0 & 0xFFFF1FFF) | flag;
 	sdmmc->regs->field_1C0 = (sdmmc->regs->field_1C0 & 0xFFFFE03F) | 0x40;
 	sdmmc->regs->field_1C0 |= 0x20000;
-	sdmmc->regs->hostctl2 |= 0x40;
+	sdmmc->regs->hostctl2  |= SDHCI_CTRL_EXEC_TUNING;
 
 	for (u32 i = 0; i < max; i++)
 	{
 		_sdmmc_config_tuning_once(sdmmc, cmd);
-		if (!(sdmmc->regs->hostctl2 & 0x40))
+		if (!(sdmmc->regs->hostctl2 & SDHCI_CTRL_EXEC_TUNING))
 			break;
 	}
 
-	if (sdmmc->regs->hostctl2 & 0x80)
+	if (sdmmc->regs->hostctl2 & SDHCI_CTRL_TUNED_CLK)
 		return 1;
 	return 0;
 }
@@ -545,21 +573,21 @@ static int _sdmmc_enable_internal_clock(sdmmc_t *sdmmc)
 	//Enable internal clock and wait till it is stable.
 	sdmmc->regs->clkcon |= TEGRA_MMC_CLKCON_INTERNAL_CLOCK_ENABLE;
 	_sdmmc_get_clkcon(sdmmc);
-	u32 timeout = get_tmr() + 2000000;
+	u32 timeout = get_tmr_ms() + 2000;
 	while (!(sdmmc->regs->clkcon & TEGRA_MMC_CLKCON_INTERNAL_CLOCK_STABLE))
 	{
-		if (get_tmr() > timeout)
+		if (get_tmr_ms() > timeout)
 			return 0;
 	}
 
-	sdmmc->regs->hostctl2 &= 0x7FFF;
-	sdmmc->regs->clkcon &= ~TEGRA_MMC_CLKCON_CLKGEN_SELECT;
-	sdmmc->regs->hostctl2 |= 0x1000;
+	sdmmc->regs->hostctl2 &= ~SDHCI_CTRL_PRESET_VAL_EN;
+	sdmmc->regs->clkcon   &= ~TEGRA_MMC_CLKCON_CLKGEN_SELECT;
+	sdmmc->regs->hostctl2 |= SDHCI_HOST_VERSION_4_EN;
 
 	if (!(sdmmc->regs->capareg & 0x10000000))
 		return 0;
 
-	sdmmc->regs->hostctl2 |= 0x2000;
+	sdmmc->regs->hostctl2 |= SDHCI_ADDRESSING_64BIT_EN;
 	sdmmc->regs->hostctl &= 0xE7;
 	sdmmc->regs->timeoutcon = (sdmmc->regs->timeoutcon & 0xF0) | 0xE;
 
@@ -614,17 +642,17 @@ static void _sdmmc_autocal_execute(sdmmc_t *sdmmc, u32 power)
 	{
 		sdmmc->regs->sdmemcmppadctl |= 0x80000000;
 		_sdmmc_get_clkcon(sdmmc);
-		sleep(1);
+		usleep(1);
 	}
 
 	sdmmc->regs->autocalcfg |= 0xA0000000;
 	_sdmmc_get_clkcon(sdmmc);
-	sleep(1);
+	usleep(1);
 
-	u32 timeout = get_tmr() + 10000;
+	u32 timeout = get_tmr_ms() + 10;
 	while (sdmmc->regs->autocalcfg & 0x80000000)
 	{
-		if (get_tmr() > timeout)
+		if (get_tmr_ms() > timeout)
 		{
 			//In case autocalibration fails, we load suggested standard values.
 			_sdmmc_pad_config_fallback(sdmmc, power);
@@ -682,13 +710,13 @@ static int _sdmmc_wait_request(sdmmc_t *sdmmc)
 {
 	_sdmmc_get_clkcon(sdmmc);
 
-	u32 timeout = get_tmr() + 2000000;
+	u32 timeout = get_tmr_ms() + 2000;
 	while (1)
 	{
 		int res = _sdmmc_check_mask_interrupt(sdmmc, 0, TEGRA_MMC_NORINTSTS_CMD_COMPLETE);
 		if (res == SDMMC_MASKINT_MASKED)
 			break;
-		if (res != SDMMC_MASKINT_NOERROR || get_tmr() > timeout)
+		if (res != SDMMC_MASKINT_NOERROR || get_tmr_ms() > timeout)
 		{
 			_sdmmc_reset(sdmmc);
 			return 0;
@@ -732,11 +760,11 @@ int sdmmc_stop_transmission(sdmmc_t *sdmmc, u32 *rsp)
 		should_disable_sd_clock = 1;
 		sdmmc->regs->clkcon |= TEGRA_MMC_CLKCON_SD_CLOCK_ENABLE;
 		_sdmmc_get_clkcon(sdmmc);
-		sleep((8000 + sdmmc->divisor - 1) / sdmmc->divisor);
+		usleep((8000 + sdmmc->divisor - 1) / sdmmc->divisor);
 	}
 
 	int res = _sdmmc_stop_transmission_inner(sdmmc, rsp);
-	sleep((8000 + sdmmc->divisor - 1) / sdmmc->divisor);
+	usleep((8000 + sdmmc->divisor - 1) / sdmmc->divisor);
 	if (should_disable_sd_clock)
 		sdmmc->regs->clkcon &= ~TEGRA_MMC_CLKCON_SD_CLOCK_ENABLE;
 
@@ -789,15 +817,14 @@ static int _sdmmc_update_dma(sdmmc_t *sdmmc)
 	do
 	{
 		blkcnt = sdmmc->regs->blkcnt;
-		u32 timeout = get_tmr() + 1500000;
+		u32 timeout = get_tmr_ms() + 1500;
 		do
 		{
 			int res = 0;
 			while (1)
 			{
 				u16 intr = 0;
-				res = _sdmmc_check_mask_interrupt(sdmmc, &intr, 
-					TEGRA_MMC_NORINTSTS_XFER_COMPLETE | TEGRA_MMC_NORINTSTS_DMA_INTERRUPT);
+				res = _sdmmc_check_mask_interrupt(sdmmc, &intr, TEGRA_MMC_NORINTSTS_XFER_COMPLETE | TEGRA_MMC_NORINTSTS_DMA_INTERRUPT);
 				if (res < 0)
 					break;
 				if (intr & TEGRA_MMC_NORINTSTS_XFER_COMPLETE)
@@ -815,7 +842,7 @@ static int _sdmmc_update_dma(sdmmc_t *sdmmc)
 				_sdmmc_reset(sdmmc);
 				return 0;
 			}
-		} while (get_tmr() < timeout);
+		} while (get_tmr_ms() < timeout);
 	} while (sdmmc->regs->blkcnt != blkcnt);
 
 	_sdmmc_reset(sdmmc);
@@ -877,17 +904,8 @@ static int _sdmmc_execute_cmd_inner(sdmmc_t *sdmmc, sdmmc_cmd_t *cmd, sdmmc_req_
 	return res;
 }
 
-static int _sdmmc_config_sdmmc1()
+static void _sdmmc1_config_pads(u32 padMode) //0 for disabled, 1 for 3.3v, higher for 1.8v (schmitt on)
 {
-	//Configure SD card detect.
-	pinmux_set_config(PINMUX_GPIO_Z1, PINMUX_INPUT_ENABLE | PINMUX_PULL_UP | PINMUX_GPIO_PZ1_FUNC_SDMMC1);
-	APB_MISC(APB_MISC_GP_VGPIO_GPIO_MUX_SEL) = 0;
-	gpio_config(GPIO_DECOMPOSE(GPIO_Z1_INDEX), GPIO_MODE_GPIO);
-	gpio_output_enable(GPIO_DECOMPOSE(GPIO_Z1_INDEX), GPIO_OUTPUT_DISABLE);
-	sleep(100);
-	if(!!gpio_read(GPIO_DECOMPOSE(GPIO_Z1_INDEX)))
-		return 0;
-
 	/*
 	* Pinmux config:
 	*  DRV_TYPE = DRIVE_2X
@@ -897,38 +915,50 @@ static int _sdmmc_config_sdmmc1()
 	*  APB_MISC_GP_SDMMCx_CLK_LPBK_CONTROL = SDMMCx_CLK_PAD_E_LPBK for CLK
 	*/
 
-	//Configure SDMMC1 pinmux.
-	APB_MISC(APB_MISC_GP_SDMMC1_CLK_LPBK_CONTROL) = 1;
-	pinmux_set_config(PINMUX_SDMMC1_CLK_INDEX, PINMUX_DRIVE_2X | PINMUX_INPUT_ENABLE | PINMUX_PARKED);
-	pinmux_set_config(PINMUX_SDMMC1_CMD_INDEX, PINMUX_DRIVE_2X | PINMUX_INPUT_ENABLE | PINMUX_PARKED | PINMUX_PULL_UP);
-	pinmux_set_config(PINMUX_SDMMC1_DAT3_INDEX, PINMUX_DRIVE_2X | PINMUX_INPUT_ENABLE | PINMUX_PARKED | PINMUX_PULL_UP);
-	pinmux_set_config(PINMUX_SDMMC1_DAT2_INDEX, PINMUX_DRIVE_2X | PINMUX_INPUT_ENABLE | PINMUX_PARKED | PINMUX_PULL_UP);
-	pinmux_set_config(PINMUX_SDMMC1_DAT1_INDEX, PINMUX_DRIVE_2X | PINMUX_INPUT_ENABLE | PINMUX_PARKED | PINMUX_PULL_UP);
-	pinmux_set_config(PINMUX_SDMMC1_DAT0_INDEX, PINMUX_DRIVE_2X | PINMUX_INPUT_ENABLE | PINMUX_PARKED | PINMUX_PULL_UP);
+	APB_MISC(APB_MISC_GP_SDMMC1_CLK_LPBK_CONTROL) = padMode ? 1 : 0;
+	u32 config = PINMUX_DRIVE_2X | PINMUX_PARKED;
+	if (padMode)
+		config |= PINMUX_INPUT_ENABLE;
+	else
+		config |= PINMUX_TRISTATE;
 
-	//Make sure the SDMMC1 controller is powered.
-	PMC(APBDEV_PMC_NO_IOPOWER) &= ~(1 << 12);
-	//Assume 3.3V SD card voltage.
+	if (padMode > 1)
+		config |= PINMUX_SCHMT;
+
+	pinmux_set_config(PINMUX_SDMMC1_CLK_INDEX, config | PINMUX_SDMMC1_CLK_FUNC_SDMMC1);
+	if (padMode)
+		config |= PINMUX_PULL_UP; //needed for all except CLK
+	
+	pinmux_set_config(PINMUX_SDMMC1_CMD_INDEX, config | PINMUX_SDMMC1_CMD_FUNC_SDMMC1);
+	pinmux_set_config(PINMUX_SDMMC1_DAT3_INDEX, config | PINMUX_SDMMC1_DAT3_FUNC_SDMMC1);
+	pinmux_set_config(PINMUX_SDMMC1_DAT2_INDEX, config | PINMUX_SDMMC1_DAT2_FUNC_SDMMC1);
+	pinmux_set_config(PINMUX_SDMMC1_DAT1_INDEX, config | PINMUX_SDMMC1_DAT1_FUNC_SDMMC1);
+	pinmux_set_config(PINMUX_SDMMC1_DAT0_INDEX, config | PINMUX_SDMMC1_DAT0_FUNC_SDMMC1);
+}
+
+static int _sdmmc_config_sdmmc1()
+{
+	usleep(100); //let the card detect stabilize
+	if(!!gpio_read(GPIO_DECOMPOSE(GPIO_Z1_INDEX)))
+		return 0;
+
+	//Set SDMMC1 IO clamps to default value before changing voltage
 	PMC(APBDEV_PMC_PWR_DET_VAL) |= (1 << 12);
 
-	//Set enable SD card power.
-	pinmux_set_config(PINMUX_DMIC3_CLK_INDEX, PINMUX_INPUT_ENABLE | PINMUX_PULL_DOWN | PINMUX_DMIC3_CLK_FUNC_I2S5A); // that last one ?
-	gpio_config(GPIO_BY_NAME(DMIC3_CLK), GPIO_MODE_GPIO);
-	gpio_write(GPIO_BY_NAME(DMIC3_CLK), GPIO_HIGH);
-	gpio_output_enable(GPIO_BY_NAME(DMIC3_CLK), GPIO_OUTPUT_ENABLE);
-
-	sleep(1000);
-
-	//Enable SD card power.
+	//Reset the SDMMC1 IO voltage back to normal
 	max77620_regulator_set_voltage(REGULATOR_LDO2, 3300000);
-	max77620_regulator_enable(REGULATOR_LDO2, 1);
 
-	sleep(1000);
+	//Configure SDMMC1 pinmux to enabled, 3.3v mode
+	_sdmmc1_config_pads(1);
+
+	//Let the power to the SD card flow
+	gpio_write(GPIO_BY_NAME(DMIC3_CLK), GPIO_HIGH);
+	usleep(1000);
 
 	//For good measure.
 	APB_MISC(APB_MISC_GP_SDMMC1_PAD_CFGPADCTRL) = 0x10000000;
 
-	sleep(1000);
+	usleep(1000);
 
 	return 1;
 }
@@ -986,7 +1016,7 @@ int sdmmc_init(sdmmc_t *sdmmc, u32 id, u32 power, u32 bus_width, u32 type, int n
 	return 0;
 }
 
-void sdmmc_end(sdmmc_t *sdmmc)
+void sdmmc_end(sdmmc_t *sdmmc, u32 powerOff)
 {
 	if (!sdmmc->clock_stopped)
 	{
@@ -995,6 +1025,21 @@ void sdmmc_end(sdmmc_t *sdmmc)
 		_sdmmc_get_clkcon(sdmmc);
 		clock_sdmmc_disable(sdmmc->id);
 		sdmmc->clock_stopped = 1;
+	}
+
+	//turn off the power completely if applicable
+	if (powerOff && sdmmc->id == SDMMC_1) 
+	{
+		//Turn off the pads
+		_sdmmc1_config_pads(0);
+
+		//Cut the card's power
+		gpio_write(GPIO_BY_NAME(DMIC3_CLK), GPIO_LOW);
+
+		//Put the clamps back to the safe value before changing voltage
+		PMC(APBDEV_PMC_PWR_DET_VAL) |= (1 << 12); 
+		//Set the SDMMC1 IO rail back to 3.3v
+		max77620_regulator_set_voltage(REGULATOR_LDO2, 3300000);
 	}
 }
 
@@ -1021,11 +1066,11 @@ int sdmmc_execute_cmd(sdmmc_t *sdmmc, sdmmc_cmd_t *cmd, sdmmc_req_t *req, u32 *b
 		should_disable_sd_clock = 1;
 		sdmmc->regs->clkcon |= TEGRA_MMC_CLKCON_SD_CLOCK_ENABLE;
 		_sdmmc_get_clkcon(sdmmc);
-		sleep((8000 + sdmmc->divisor - 1) / sdmmc->divisor);
+		usleep((8000 + sdmmc->divisor - 1) / sdmmc->divisor);
 	}
 
 	int res = _sdmmc_execute_cmd_inner(sdmmc, cmd, req, blkcnt_out);
-	sleep((8000 + sdmmc->divisor - 1) / sdmmc->divisor);
+	usleep((8000 + sdmmc->divisor - 1) / sdmmc->divisor);
 	if (should_disable_sd_clock)
 		sdmmc->regs->clkcon &= ~TEGRA_MMC_CLKCON_SD_CLOCK_ENABLE;
 
@@ -1043,19 +1088,21 @@ int sdmmc_enable_low_voltage(sdmmc_t *sdmmc)
 	_sdmmc_get_clkcon(sdmmc);
 
 	max77620_regulator_set_voltage(REGULATOR_LDO2, 1800000);
-	PMC(APBDEV_PMC_PWR_DET_VAL) &= ~(1 << 12);
+	usleep(1000); //wait for regulator to change voltage
+	PMC(APBDEV_PMC_PWR_DET_VAL) &= ~(1 << 12); //re-adjust the clamps for 1.8v operation
+	_sdmmc1_config_pads(2); //enable schmitt on inputs
 
 	_sdmmc_autocal_config_offset(sdmmc, SDMMC_POWER_1_8);
 	_sdmmc_autocal_execute(sdmmc, SDMMC_POWER_1_8);
 	_sdmmc_set_voltage(sdmmc, SDMMC_POWER_1_8);
 	_sdmmc_get_clkcon(sdmmc);
-	sleep(5000);
+	msleep(5);
 	
-	if (sdmmc->regs->hostctl2 & 8)
+	if (sdmmc->regs->hostctl2 & SDHCI_CTRL_VDD_180)
 	{
 		sdmmc->regs->clkcon |= TEGRA_MMC_CLKCON_SD_CLOCK_ENABLE;
 		_sdmmc_get_clkcon(sdmmc);
-		sleep(1000u);
+		usleep(1000);
 		if ((sdmmc->regs->prnsts & 0xF00000) == 0xF00000)
 			return 1;
 	}

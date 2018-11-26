@@ -26,7 +26,7 @@
 #include "pinmux.h"
 #include "max77620.h"
 #include "fuse.h"
-#include "util.h"
+#include "timer.h"
 
 void config_oscillators()
 {
@@ -92,7 +92,7 @@ void mbist_workaround()
 	CLOCK(0x2AC) = 0x40;
 	CLOCK(0x294) = 0x40000;
 	CLOCK(0x304) = 0x18000000;
-	sleep(2);
+	usleep(2);
 
 	I2S(0x0A0) |= 0x400;
 	I2S(0x088) &= 0xFFFFFFFE;
@@ -106,7 +106,7 @@ void mbist_workaround()
 	I2S(0x488) &= 0xFFFFFFFE;
 	DISPLAY_A(0xCF8) |= 4;
 	VIC(0x8C) = 0xFFFFFFFF;
-	sleep(2);
+	usleep(2);
 
 	CLOCK(0x2A8) = 0x40;
 	CLOCK(0x300) = 0x18000000;

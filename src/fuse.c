@@ -2,7 +2,7 @@
 
 #include "hwinit/hwinit.h"
 #include "hwinit/clock.h"
-#include "hwinit/util.h"
+#include "hwinit/timer.h"
 #include "fuse.h"
 
 /* Prototypes for internal commands. */
@@ -35,14 +35,14 @@ void fuse_make_regs_visible(void)
 void fuse_enable_power(void)
 {
     FUSE_REGS->FUSE_PWR_GOOD_SW = 1;
-    sleep(1);
+    usleep(1);
 }
 
 /* Disable power to the fuse hardware array */
 void fuse_disable_power(void)
 {
     FUSE_REGS->FUSE_PWR_GOOD_SW = 0;
-    sleep(1);
+    usleep(1);
 }
 
 /* Wait for the fuse driver to go idle */
@@ -53,7 +53,7 @@ void fuse_wait_idle(void)
     /* Wait for STATE_IDLE */
     while ((ctrl_val & (0xF0000)) != 0x40000)
     {
-        sleep(1);
+        usleep(1);
         ctrl_val = FUSE_REGS->FUSE_CTRL;
     }
 }

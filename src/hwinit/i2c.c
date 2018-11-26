@@ -17,7 +17,7 @@
 #include <string.h>
 
 #include "i2c.h"
-#include "util.h"
+#include "timer.h"
 
 static u32 i2c_addrs[] = { 0x7000C000, 0x7000C400, 0x7000C500, 0x7000C700, 0x7000D000, 0x7000D100 };
 
@@ -26,7 +26,7 @@ static void _i2c_wait(vu32 *base)
 	base[0x23] = 0x25;
 	for (u32 i = 0; i < 20; i++)
 	{
-		sleep(1);
+		usleep(1);
 		if (!(base[0x23] & 1))
 			break;
 	}
@@ -89,7 +89,7 @@ void i2c_init(u32 idx)
 
 	for (u32 i = 0; i < 10; i++)
 	{
-		sleep(20000);
+		msleep(20);
 		if (base[0x1A] & 0x800)
 			break;
 	}

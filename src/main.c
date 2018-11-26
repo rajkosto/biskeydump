@@ -324,7 +324,7 @@ int main(void) {
 
     // credits
     printk("\n fusee gelee exploit by ktemkin (and others), hwinit by naehrwert, biskeydump by rajkosto\n");
-    sdmmc_storage_end(&mmcPart);
+    sdmmc_storage_end(&mmcPart, 0);
     mc_disable_ahb_redirect(); //no longer needed 
 
     const int smileySize = 128;

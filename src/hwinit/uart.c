@@ -16,7 +16,7 @@
 
 #include "uart.h"
 #include "t210.h"
-#include "util.h"
+#include "timer.h"
 
 /* UART A, B, C, D and E. */
 static const u32 uart_baseoff[5] = { 0, 0x40, 0x200, 0x300, 0x400 };
@@ -36,7 +36,7 @@ void uart_init(u32 idx, u32 baud)
 	uart->UART_IER_DLAB = 0;
 	uart->UART_IIR_FCR = 7; //Enable and clear TX and RX FIFOs.
 	(void)uart->UART_LSR;
-	sleep(3 * ((baud + 999999) / baud));
+	usleep(3 * ((baud + 999999) / baud));
 	uart->UART_LCR = 3; //Set word length 8.
 	uart->UART_MCR = 0;
 	uart->UART_MSR = 0;

@@ -25,8 +25,6 @@ typedef struct _cfg_op_t
 	u32 val;
 } cfg_op_t;
 
-u32 get_tmr();
-void sleep(u32 ticks);
 void exec_cfg(u32 *base, const cfg_op_t *ops, u32 num_ops);
 
 #endif

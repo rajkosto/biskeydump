@@ -14,12 +14,23 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "util.h"
-#include "t210.h"
+#ifndef _TIMER_H_
+#define _TIMER_H_
 
-void exec_cfg(u32 *base, const cfg_op_t *ops, u32 num_ops)
-{
-	for(u32 i = 0; i < num_ops; i++)
-		base[ops[i].off] = ops[i].val;
-}
+#include "types.h"
 
+#define TMR_US_OFFS     0x10
+#define TMR_US_CFG_OFFS 0x14
+
+#define RTC_SECONDS		0x8
+#define RTC_SHADOW_SECONDS	0xC
+#define RTC_MILLI_SECONDS	0x10
+
+u32 get_tmr_s();
+u32 get_tmr_ms();
+u32 get_tmr_us();
+
+void msleep(u32 milliseconds);
+void usleep(u32 microseconds);
+
+#endif

@@ -45,9 +45,28 @@
 #define SDMMC_RSP_TYPE_5 5
 
 /*! SDMMC mask interrupt status. */
-#define SDMMC_MASKINT_MASKED 0
+#define SDMMC_MASKINT_MASKED   0
 #define SDMMC_MASKINT_NOERROR -1
-#define SDMMC_MASKINT_ERROR -2
+#define SDMMC_MASKINT_ERROR   -2
+
+/*! SDMMC host control 2 */
+#define SDHCI_CTRL_UHS_MASK			0xFFF8
+#define SDHCI_CTRL_VDD_330			0xFFF7
+#define SDHCI_CTRL_VDD_180			8
+#define SDHCI_CTRL_EXEC_TUNING		0x40
+#define SDHCI_CTRL_TUNED_CLK		0x80
+#define SDHCI_HOST_VERSION_4_EN		0x1000
+#define SDHCI_ADDRESSING_64BIT_EN	0x2000
+#define SDHCI_CTRL_PRESET_VAL_EN	0x8000
+
+/*! SD bus speeds. */
+#define UHS_SDR12_BUS_SPEED		0
+#define HIGH_SPEED_BUS_SPEED	1
+#define UHS_SDR25_BUS_SPEED		1
+#define UHS_SDR50_BUS_SPEED		2
+#define UHS_SDR104_BUS_SPEED	3
+#define UHS_DDR50_BUS_SPEED		4
+#define HS400_BUS_SPEED 		5
 
 /*! Helper for SWITCH command argument. */
 #define SDMMC_SWITCH(mode, index, value) (((mode) << 24) | ((index) << 16) | ((value) << 8))
@@ -99,7 +118,7 @@ int sdmmc_get_rsp(sdmmc_t *sdmmc, u32 *rsp, u32 size, u32 type);
 int sdmmc_config_tuning(sdmmc_t *sdmmc, u32 type, u32 cmd);
 int sdmmc_stop_transmission(sdmmc_t *sdmmc, u32 *rsp);
 int sdmmc_init(sdmmc_t *sdmmc, u32 id, u32 power, u32 bus_width, u32 type, int no_sd);
-void sdmmc_end(sdmmc_t *sdmmc);
+void sdmmc_end(sdmmc_t *sdmmc, u32 powerOff);
 void sdmmc_init_cmd(sdmmc_cmd_t *cmdbuf, u16 cmd, u32 arg, u32 rsp_type, u32 check_busy);
 int sdmmc_execute_cmd(sdmmc_t *sdmmc, sdmmc_cmd_t *cmd, sdmmc_req_t *req, u32 *blkcnt_out);
 int sdmmc_enable_low_voltage(sdmmc_t *sdmmc);
