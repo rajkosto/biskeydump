@@ -21,18 +21,19 @@
 #include "pmc.h"
 #include "t210.h"
 #include "max77620.h"
+#include "max7762x.h"
 
 void _cluster_enable_power()
 {
-	u8 tmp = i2c_recv_byte(I2C_PWR, 0x3C, MAX77620_REG_AME_GPIO);
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_AME_GPIO, tmp & 0xDF);
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_GPIO5, 0x09);
+	u8 tmp = max77620_recv_byte(MAX77620_REG_AME_GPIO);
+	max77620_send_byte(MAX77620_REG_AME_GPIO, tmp & 0xDF);
+	max77620_send_byte(MAX77620_REG_GPIO5, 0x09);
 
 	//Enable cores power.
-	i2c_send_byte(I2C_PWR, 0x1B, 0x2, 0x20);
-	i2c_send_byte(I2C_PWR, 0x1B, 0x3, 0x8D);
-	i2c_send_byte(I2C_PWR, 0x1B, 0x0, 0xB7);
-	i2c_send_byte(I2C_PWR, 0x1B, 0x1, 0xB7);
+	i2c_send_byte(I2C_5, 0x1B, 0x2, 0x20);
+	i2c_send_byte(I2C_5, 0x1B, 0x3, 0x8D);
+	i2c_send_byte(I2C_5, 0x1B, 0x0, 0xB7);
+	i2c_send_byte(I2C_5, 0x1B, 0x1, 0xB7);
 }
 
 int _cluster_pmc_enable_partition(u32 part, u32 toggle)

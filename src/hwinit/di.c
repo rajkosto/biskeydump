@@ -21,6 +21,7 @@
 #include "i2c.h"
 #include "pmc.h"
 #include "max77620.h"
+#include "max7762x.h"
 
 #include "di.inl"
 
@@ -37,8 +38,9 @@ static void _display_dsi_wait(u32 timeout, u32 off, u32 mask)
 void display_init()
 {
 	//Power on.
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_LDO0_CFG, 0xD0); //Configure to 1.2V.
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_GPIO7, 0x09);
+	max77620_regulator_set_voltage(REGULATOR_LDO0, 1200000); //1.2V
+	max77620_regulator_enable(REGULATOR_LDO0, 1);
+	max77620_send_byte(MAX77620_REG_GPIO7, 0x09);
 
 	//Enable MIPI CAL, DSI, DISP1, HOST1X, UART_FST_MIPI_CAL, DSIA LP clocks.
 	CLOCK(0x30C) = 0x1010000;

@@ -27,7 +27,7 @@ u32 btn_read()
 		res |= BTN_VOL_DOWN;
 	if (!gpio_read(GPIO_BY_NAME(BUTTON_VOL_UP)))
 		res |= BTN_VOL_UP;
-	if (i2c_recv_byte(I2C_PWR, 0x3C, 0x15) & 0x4)
+	if (i2c_recv_byte(I2C_5, 0x3C, 0x15) & 0x4)
 		res |= BTN_POWER;
 	return res;
 }

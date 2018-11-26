@@ -25,6 +25,7 @@
 #include "gpio.h"
 #include "pinmux.h"
 #include "max77620.h"
+#include "max7762x.h"
 #include "fuse.h"
 #include "timer.h"
 
@@ -63,7 +64,7 @@ void config_gpios()
 	gpio_output_enable(GPIO_DECOMPOSE(GPIO_H6_INDEX), GPIO_OUTPUT_DISABLE);
 
 	pinmux_config_i2c(I2C_1);
-	pinmux_config_i2c(I2C_PWR);
+	pinmux_config_i2c(I2C_5);
 
 	//unused UART_A
 	PINMUX_SET_UNUSED_BY_NAME(UART1_RX);
@@ -76,6 +77,18 @@ void config_gpios()
 	gpio_config(GPIO_BY_NAME(BUTTON_VOL_DOWN), GPIO_MODE_GPIO);
 	gpio_output_enable(GPIO_BY_NAME(BUTTON_VOL_UP), GPIO_OUTPUT_DISABLE);
 	gpio_output_enable(GPIO_BY_NAME(BUTTON_VOL_DOWN), GPIO_OUTPUT_DISABLE);
+
+	//Configure SD card detect pin
+	pinmux_set_config(PINMUX_GPIO_Z1, PINMUX_INPUT_ENABLE | PINMUX_PULL_UP | PINMUX_GPIO_PZ1_FUNC_SDMMC1);
+	gpio_config(GPIO_DECOMPOSE(GPIO_Z1_INDEX), GPIO_MODE_GPIO);
+	gpio_output_enable(GPIO_DECOMPOSE(GPIO_Z1_INDEX), GPIO_OUTPUT_DISABLE);
+	APB_MISC(APB_MISC_GP_VGPIO_GPIO_MUX_SEL) = 0; //use GPIO for all SDMMC 
+
+	//Configure SD power enable pin (powered off by default)
+	pinmux_set_config(PINMUX_DMIC3_CLK_INDEX, PINMUX_INPUT_ENABLE | PINMUX_PULL_DOWN | PINMUX_DMIC3_CLK_FUNC_I2S5A); //not sure about the altfunc here
+	gpio_config(GPIO_BY_NAME(DMIC3_CLK), GPIO_MODE_GPIO);
+	gpio_write(GPIO_BY_NAME(DMIC3_CLK), GPIO_LOW);
+	gpio_output_enable(GPIO_BY_NAME(DMIC3_CLK), GPIO_OUTPUT_ENABLE);
 }
 
 void config_pmc_scratch()
@@ -155,29 +168,37 @@ void config_hw()
 	clock_enable_cl_dvfs();
 
 	clock_enable_i2c(I2C_1);
-	clock_enable_i2c(I2C_PWR);
+	clock_enable_i2c(I2C_5);
 
-	static const clock_t clock_unk1 = { 0x358, 0x360, 0x42C, 0x1F, 0, 0 };
-	static const clock_t clock_unk2 = { 0x358, 0x360, 0, 0x1E, 0, 0 };
-	clock_enable(&clock_unk1);
-	clock_enable(&clock_unk2);
+	clock_enable_se();
+	static const clock_t clock_unk = { CLK_RST_CONTROLLER_RST_DEVICES_V, CLK_RST_CONTROLLER_CLK_OUT_ENB_V, 0, 30, 0, 0 };
+	clock_enable(&clock_unk);
 
 	i2c_init(I2C_1);
-	i2c_init(I2C_PWR);
+	i2c_init(I2C_5);
 
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_CNFGBBC, 0x40);
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_ONOFFCNFG1, 0x78);
+	max77620_send_byte(MAX77620_REG_CNFGBBC, 0x40);
+	max77620_send_byte(MAX77620_REG_ONOFFCNFG1, 0x78);
 
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_CFG0, 0x38);
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_CFG1, 0x3A);
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_CFG2, 0x38);
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_LDO4, 0xF);
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_LDO8, 0xC7);
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_SD0, 0x4F);
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_SD1, 0x29);
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_FPS_SD3, 0x1B);
+	max77620_send_byte(MAX77620_REG_FPS_CFG0, 0x38);
+	max77620_send_byte(MAX77620_REG_FPS_CFG1, 0x3A);
+	max77620_send_byte(MAX77620_REG_FPS_CFG2, 0x38);
+	max77620_regulator_config_fps(REGULATOR_LDO4);
+	max77620_regulator_config_fps(REGULATOR_LDO8);
+	max77620_regulator_config_fps(REGULATOR_SD0);
+	max77620_regulator_config_fps(REGULATOR_SD1);
+	max77620_regulator_config_fps(REGULATOR_SD3);
+	max77620_regulator_set_voltage(REGULATOR_SD0, 1125000); //1.125V
 
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_SD0, 42); //42 = (1125000 - 600000) / 12500 -> 1.125V
+	//Set SDMMC1 IO clamps to default value before changing voltage
+	PMC(APBDEV_PMC_PWR_DET_VAL) |= (1 << 12);
+
+	//Start up the SDMMC1 IO voltage regulator
+	max77620_regulator_set_voltage(REGULATOR_LDO2, 3300000);
+	max77620_regulator_enable(REGULATOR_LDO2, 1);
+
+	//Remove isolation from SDMMC1 and core domain
+	PMC(APBDEV_PMC_NO_IOPOWER) &= ~(1 << 12);
 
 	config_pmc_scratch();
 

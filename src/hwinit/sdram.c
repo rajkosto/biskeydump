@@ -22,6 +22,7 @@
 #include "timer.h"
 #include "fuse.h"
 #include "max77620.h"
+#include "max7762x.h"
 #include "sdram_param_t210.h"
 
 #define CONFIG_SDRAM_COMPRESS_CFG
@@ -506,8 +507,8 @@ void sdram_init()
 	//TODO: sdram_id should be in [0,4].
 	const sdram_params_t *params = (const sdram_params_t *)sdram_get_params();
 
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_SD_CFG2, 0x05);
-	i2c_send_byte(I2C_PWR, 0x3C, MAX77620_REG_SD1, 40); //40 = (1000 * 1100 - 600000) / 12500 -> 1.1V
+	max77620_send_byte(MAX77620_REG_SD_CFG2, 0x05);
+	max77620_regulator_set_voltage(REGULATOR_SD1, 1100000); //1.1V
 
 	PMC(APBDEV_PMC_VDDP_SEL) = params->pmc_vddp_sel;
 	usleep(params->pmc_vddp_sel_wait);
