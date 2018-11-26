@@ -11,6 +11,7 @@
 #include "hwinit/t210.h"
 #include "hwinit/sdmmc.h"
 #include "hwinit/sdmmc_driver.h"
+#include "hwinit/timer.h"
 #include "fuse.h"
 #include "se.h"
 #include "key_derivation.h"
@@ -20,12 +21,15 @@
 #include "lib/crc32.h"
 #include "lib/qrcodegen.h"
 #include "rcm_usb.h"
+#include "storage.h"
+#include "lib/ff.h"
 #include <alloca.h>
-#define XVERSION 6
+#include <string.h>
+#define XVERSION 7
 
 static void shutdown_using_pmic()
 {
-    const u8 MAX77620_I2C_PERIPH = I2C_PWR;
+    const u8 MAX77620_I2C_PERIPH = I2C_5;
     const u8 MAX77620_I2C_ADDR = 0x3C;
 
     const u8 MAX77620_REG_ONOFFCNFG1 = 0x41;
@@ -215,6 +219,50 @@ static NOINLINE bool drawQrCode(u32* lfb_base, const char* textBuf, int qrCodeVe
     return false;
 }
 
+static int initialize_mount(FATFS* outFS, u8 devNum)
+{
+    sdmmc_t* currCont = get_controller_for_index(devNum);
+    sdmmc_storage_t* currStor = get_storage_for_index(devNum);
+
+    if (currCont == NULL || currStor == NULL)
+        return 0;
+
+    if (currStor->sdmmc != NULL)
+        return 1; //already initialized
+
+    if (devNum == 0) //maybe support more ?
+    {
+        if (sdmmc_storage_init_sd(currStor, currCont, SDMMC_1, SDMMC_BUS_WIDTH_4, 11) && f_mount(outFS, "", 1) == FR_OK)
+            return 1;
+        else
+        {
+            if (currStor->sdmmc != NULL)
+                sdmmc_storage_end(currStor, 0);
+
+            memset(currCont, 0, sizeof(sdmmc_t));
+            memset(currStor, 0, sizeof(sdmmc_storage_t));
+        }
+    }
+
+	return 0;
+}
+
+static void deinitialize_storage()
+{
+    f_unmount("");
+    for (u32 i=0; i<FF_VOLUMES; i++)
+    {
+        sdmmc_storage_t* stor = get_storage_for_index((u8)i);
+        if (stor != NULL && stor->sdmmc != NULL)
+        {
+            if (!sdmmc_storage_end(stor, 1))
+                dbg_print("sdmmc_storage_end for storage idx %u FAILED!\n", i);
+            else
+                memset(stor, 0, sizeof(sdmmc_storage_t));
+        }
+    }
+}
+
 int main(void) {
     char textBuf[1024];
     u32 tempBuf[0x20/sizeof(u32)];
@@ -325,7 +373,6 @@ int main(void) {
     // credits
     printk("\n fusee gelee exploit by ktemkin (and others), hwinit by naehrwert, biskeydump by rajkosto\n");
     sdmmc_storage_end(&mmcPart, 0);
-    mc_disable_ahb_redirect(); //no longer needed 
 
     const int smileySize = 128;
     const int smileyVertStart = 128*3;
@@ -341,6 +388,10 @@ int main(void) {
         rcm_usb_device_reset_ep1();
     }
 
+    if (retVal == 0)
+        printk("\n\n\n\n\n\n\n\n\n\n\n\n        PRESS VOL- TO SAVE KEYS TO MICROSD OR PRESS POWER TO TURN OFF THE CONSOLE");
+
+    int currRow = video_get_row();
     const float incPixel = 1.0f/smileySize;
     const float timerToSeconds = 1.0f/1000000;
     u32 lastTmr = TMR(0x10);
@@ -379,15 +430,222 @@ int main(void) {
             rowIdx += FRAMEBUFFER_LINE_STRIDE;
             uv.y -= incPixel;
 
-            // Check for power button press
-            if (btn_read() == BTN_POWER)
+            // Check for button press
+            if (retVal == 0 && btn_read() == BTN_VOL_DOWN)
+                goto writetosd;
+            else if (btn_read() == BTN_POWER)
                 goto progend;
         }
 
         lastTime = fTime;
     }    
+writetosd:
+    video_reposition(0,0);
+    while ((currRow--) >= 0)
+    {
+        printk(" ");
+        video_clear_line();
+        printk("\n");
+    }
 
+    video_reposition(0,0);
+    FATFS fs;
+    memset(&fs, 0, sizeof(FATFS));
+    while (!initialize_mount(&fs, 0))
+    {
+        memset(&fs, 0, sizeof(FATFS));
+		printk("Failed to mount SD card, press VOL+ to try again or POWER to power off\n");
+        u32 btnRes;
+        for (;;)
+        {
+            btnRes = btn_read();
+            if ((btnRes & (BTN_POWER | BTN_VOL_UP)) == 0)
+                msleep(1);
+            else
+                break;
+        }
+        if (btnRes & BTN_VOL_UP)
+        {
+            msleep(200);
+            continue;
+        }
+        else if (btnRes & BTN_POWER)
+            goto progend;
+    }
+
+    printk("microSD mounted\n");
+    static const char* KEYS_FILENAME = "device.keys";
+
+    FILINFO finfo;
+    memset(&finfo, 0, sizeof(finfo));
+    FRESULT res = f_stat(KEYS_FILENAME, &finfo);
+    if (res == FR_OK)
+    {
+        if (finfo.fattrib & AM_DIR)
+        {
+            printk("%s on the microSD is a directory, cannot continue!\n", KEYS_FILENAME);
+            goto sdend;
+        }
+        else
+        {
+            printk("%s on the microSD already exists, press VOL+ to overwrite or POWER to cancel\n", KEYS_FILENAME);
+            u32 btnRes;
+            for (;;)
+            {
+                btnRes = btn_read();
+                if ((btnRes & (BTN_VOL_UP | BTN_POWER)) == 0)
+                    msleep(1);
+                else
+                    break;
+            }
+            if (btnRes & BTN_VOL_UP)
+            {
+                res = f_unlink(KEYS_FILENAME);
+                if (res == FR_OK)
+                    printk("Successfully deleted existing %s on the microSD\n", KEYS_FILENAME);
+                else
+                {
+                    printk("Error %d deleting existing %s on the microSD!\n", res, KEYS_FILENAME);
+                    goto sdend;
+                }
+            }
+            else if (btnRes & BTN_POWER)
+                goto sdend;
+        }
+    }
+
+    FIL filHndl;
+    memset(&filHndl, 0, sizeof(filHndl));
+    res = f_open(&filHndl, KEYS_FILENAME, FA_WRITE | FA_CREATE_ALWAYS);
+    if (res != FR_OK)
+    {
+        printk("Error %d opening %s on the microSD, cannot continue!\n", res, KEYS_FILENAME);
+        goto sdend;
+    }
+    else
+        printk("Opened %s on the microSD for writing\n", KEYS_FILENAME);
+
+    {
+        char* sbk_hex = NULL;
+        char* tsec_hex = NULL;
+        char* devkey_hex = NULL;
+        char* biskey_crypt_hex[4] = {NULL};
+        char* biskey_tweak_hex[4] = {NULL};
+
+        const char* foundPos = NULL;
+        
+        static const char SBK_SEARCH_STR[] = "SBK:";
+        foundPos = strstr((foundPos == NULL) ? textBuf : foundPos, SBK_SEARCH_STR);
+        if (foundPos != NULL)
+        {
+            foundPos += sizeof(SBK_SEARCH_STR);
+            const char* nlPos = strchr(foundPos, '\n');
+            if (nlPos == NULL) nlPos = &textBuf[currTextBufPos];
+            sbk_hex = strndup(foundPos, nlPos-foundPos);
+            foundPos = nlPos;
+        }
+
+        static const char TSEC_SEARCH_STR[] = "TSEC KEY:";
+        foundPos = strstr((foundPos == NULL) ? textBuf : foundPos, TSEC_SEARCH_STR);
+        if (foundPos != NULL)
+        {
+            foundPos += sizeof(TSEC_SEARCH_STR);
+            const char* nlPos = strchr(foundPos, '\n');
+            if (nlPos == NULL) nlPos = &textBuf[currTextBufPos];
+            tsec_hex = strndup(foundPos, nlPos-foundPos);
+            foundPos = nlPos;
+        }
+
+        static const char DEVKEY_SEARCH_STR[] = "DEVICE KEY:";
+        foundPos = strstr((foundPos == NULL) ? textBuf : foundPos, DEVKEY_SEARCH_STR);
+        if (foundPos != NULL)
+        {
+            foundPos += sizeof(DEVKEY_SEARCH_STR);
+            const char* nlPos = strchr(foundPos, '\n');
+            if (nlPos == NULL) nlPos = &textBuf[currTextBufPos];
+            devkey_hex = strndup(foundPos, nlPos-foundPos);
+            foundPos = nlPos;
+        }
+
+        char bisKeySearchStrCrypt[] = "BIS KEY 0 (crypt):";
+        char bisKeySearchStrTweak[] = "BIS KEY 0 (tweak):";
+
+        const int bisKeySearchIdxChar = strchr(bisKeySearchStrCrypt, '0') - bisKeySearchStrCrypt;
+        for (int i=0; i<4; i++)
+        {
+            bisKeySearchStrCrypt[bisKeySearchIdxChar] = '0' + i;
+            bisKeySearchStrTweak[bisKeySearchIdxChar] = '0' + i;
+
+            foundPos = strstr((foundPos == NULL) ? textBuf : foundPos, bisKeySearchStrCrypt);
+            if (foundPos != NULL)
+            {
+                foundPos += sizeof(bisKeySearchStrCrypt);
+                const char* nlPos = strchr(foundPos, '\n');
+                if (nlPos == NULL) nlPos = &textBuf[currTextBufPos];
+                biskey_crypt_hex[i] = strndup(foundPos, nlPos-foundPos);
+                foundPos = nlPos;
+            }
+            foundPos = strstr((foundPos == NULL) ? textBuf : foundPos, bisKeySearchStrTweak);
+            if (foundPos != NULL)
+            {
+                foundPos += sizeof(bisKeySearchStrTweak);
+                const char* nlPos = strchr(foundPos, '\n');
+                if (nlPos == NULL) nlPos = &textBuf[currTextBufPos];
+                biskey_tweak_hex[i] = strndup(foundPos, nlPos-foundPos);
+                foundPos = nlPos;
+            }
+        }
+
+        currTextBufPos = 0;
+        textBuf[currTextBufPos] = 0;
+
+        if (sbk_hex != NULL)
+        {
+            currTextBufPos += snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos), "secure_boot_key = %s\r\n", sbk_hex);
+            free(sbk_hex); sbk_hex = NULL;
+        }
+
+        if (tsec_hex != NULL)
+        {
+            currTextBufPos += snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos), "tsec_key = %s\r\n", tsec_hex);
+            free(tsec_hex); tsec_hex = NULL;
+        }
+
+        if (devkey_hex != NULL)
+        {
+            currTextBufPos += snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos), "device_key = %s\r\n", devkey_hex);
+            free(devkey_hex); devkey_hex = NULL;
+        }
+
+        for (int i=0; i<4; i++)
+        {
+            if (biskey_crypt_hex[i] == NULL && biskey_tweak_hex[i] == NULL)
+                continue;
+
+            currTextBufPos += snprintfk(&textBuf[currTextBufPos], REMAINING_TEXT_BYTES(textBuf, currTextBufPos), 
+                                        "bis_key_0%d = %s%s\r\n", i, biskey_crypt_hex[i], biskey_tweak_hex[i]);
+
+            if (biskey_crypt_hex[i] != NULL) { free(biskey_crypt_hex[i]); biskey_crypt_hex[i] = NULL; }
+            if (biskey_tweak_hex[i] != NULL) { free(biskey_tweak_hex[i]); biskey_tweak_hex[i] = NULL; }
+        }
+    }
+
+    res = f_write(&filHndl, textBuf, currTextBufPos, NULL);
+    if (res != FR_OK)
+        printk("Error %d writing %d bytes to %s on the microSD\n", res, currTextBufPos, KEYS_FILENAME);
+    else
+        printk("Written %d bytes to %s on the microSD\n", currTextBufPos, KEYS_FILENAME);
+
+    res = f_close(&filHndl);
+    if (res != FR_OK)
+        printk("Error %d closing %s on the microSD, cannot continue!\n", res, KEYS_FILENAME);
+
+sdend:
+    deinitialize_storage();
+    printk("\nPress POWER to turn off the console\n");
+    while (btn_read() != BTN_POWER) { msleep(1); }
 progend:
+    mc_disable_ahb_redirect();
     // Tell the PMIC to turn everything off
     shutdown_using_pmic();
 
