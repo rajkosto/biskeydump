@@ -25,7 +25,7 @@
 #include "lib/ff.h"
 #include <alloca.h>
 #include <string.h>
-#define XVERSION 7
+#define XVERSION 8
 
 static void shutdown_using_pmic()
 {
@@ -60,13 +60,14 @@ static NOINLINE const char* hexify_crypto_key(const void* dataBuf, size_t keySiz
 
 static NOINLINE int tsec_key_readout(sdmmc_storage_t* mmc, void* outBuf)  //noinline so we get the stack space back
 {
-    u8 carveoutData[0x2A00];
+    u8 carveoutData[0x3200];
     u32 carveoutCurrIdx = 0;
     
     static const u32 PKG1LDR_OFFSET = 0x100000;
     static const u32 PKG1LDR_SIZE = 0x40000;    
     static const u32 SML_TSECFW_SIZE = 0xF00;
     static const u32 BIG_TSECFW_SIZE = 0x2900;
+    static const u32 YUG_TSECFW_SIZE = 0x3000;
 
     static const u32 SECTOR_SIZE = 512;
     static const u32 BUFFER_SIZE_IN_SECTORS = sizeof(carveoutData)/SECTOR_SIZE;    
@@ -125,7 +126,7 @@ static NOINLINE int tsec_key_readout(sdmmc_storage_t* mmc, void* outBuf)  //noin
         else //read to tsecfw buffer
         {
             carveoutCurrIdx += numBytesRead;
-            if (carveoutCurrIdx >= BIG_TSECFW_SIZE)
+            if (carveoutCurrIdx >= YUG_TSECFW_SIZE)
                 break; //we are done
         }
 
@@ -153,6 +154,12 @@ static NOINLINE int tsec_key_readout(sdmmc_storage_t* mmc, void* outBuf)  //noin
             theCrc = crc32b(carveoutBytes, BIG_TSECFW_SIZE);
             if (theCrc == 0xBEC3BC15)
                 tsecFwSize = BIG_TSECFW_SIZE;
+            else
+            {
+                theCrc = crc32b(carveoutBytes, YUG_TSECFW_SIZE);
+                if (theCrc == 0x3300FF08)
+                    tsecFwSize = YUG_TSECFW_SIZE;
+            }
         }
 
         printk("TSEC FW CRC32: %08x - %s\n", theCrc, (tsecFwSize != 0) ? "CORRECT" : "INCORRECT");
